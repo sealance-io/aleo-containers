@@ -1,0 +1,49 @@
+# Node modules
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Environment files (except example)
+.env
+.env.*
+!.env.example
+
+# Git and GitHub files
+.git/
+.github/
+.gitignore
+
+# Docker-related files
+Dockerfile
+*.Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Logs
+logs/
+*.log
+
+# Local development files
+*.json
+!package*.json
+*.state
+*.db
+last_processed_block.json
+
+# Documentation
+README.md
+CHANGELOG.md
+LICENSE
+docs/
+
+# Testing
+test/
+coverage/
+
+# Editor configs
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
