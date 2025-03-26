@@ -13,13 +13,9 @@ export REGISTRY="ghcr.io"
 export USER="sealance-io"
 export IMAGE_NAME="leo-lang"
 export LEO_VERSION="v2.4.1"
+export NODE_VERSION=22
+export DEBIAN_RELEASE=bookworm
 
-script_dir=$(dirname $(realpath $0))
-NODE_FULL_VERSION=$(cat "${script_dir}"/../.nvmrc | sed -e 's/^v//')
-NODE_VERSION=$(echo "$NODE_FULL_VERSION" | awk -F. '{if (NF==1) print $1".0"; else print $1"."$2}')
-DEBIAN_RELEASE=bookworm
-
-echo "NODE_FULL_VERSION is $NODE_FULL_VERSION"
 echo "NODE_VERSION is $NODE_VERSION"
 
 # Make sure to login via docker/podman CLI using your GitHub PAT with 'packages:write' permissions
