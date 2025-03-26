@@ -180,7 +180,7 @@ docker buildx ls
 Ensure your GitHub token has the necessary package permissions:
 
 ```bash
-echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+echo $GITHUB_TOKEN | docker login ghcr.io -u $USERNAME --password-stdin
 ```
 
 ### Permission Issues in Mounted Volumes
