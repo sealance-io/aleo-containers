@@ -38,7 +38,7 @@ RUN cargo +${RUST_VERSION} install --path . --release
 # Stage 2: Create final image
 FROM node:${NODE_VERSION}-${DEBIAN_RELEASE}-slim
 
-LABEL org.opencontainers.image.source="https://github.com/my-org-io/leo-lang"
+LABEL org.opencontainers.image.source="https://github.com/sealance-io/leo-lang"
 LABEL org.opencontainers.image.description="Leo CLI with NodeJS environment"
 
 # Copy leo-lang binary from the builder stage
