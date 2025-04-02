@@ -33,12 +33,12 @@ ARG RUST_VERSION
 RUN rustup toolchain install ${RUST_VERSION} --force && rustup default ${RUST_VERSION}
 
 # Compile with optimizations
-RUN cargo +${RUST_VERSION} install --path . --release
+RUN cargo +${RUST_VERSION} install --path .
 
 # Stage 2: Create final image
 FROM node:${NODE_VERSION}-${DEBIAN_RELEASE}-slim
 
-LABEL org.opencontainers.image.source="https://github.com/sealance-io/leo-lang"
+LABEL org.opencontainers.image.source="https://github.com/ProvableHQ/leo"
 LABEL org.opencontainers.image.description="Leo CLI with NodeJS environment"
 
 # Copy leo-lang binary from the builder stage
@@ -50,6 +50,7 @@ ENV PATH="/usr/local/bin:${PATH}"
 # Install required packages - common packages first
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
+    curl \
     ca-certificates \
     && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -59,7 +60,7 @@ ARG INCLUDE_GITHUB_ACTION_TOOLS
 RUN if [ "$INCLUDE_GITHUB_ACTION_TOOLS" = "true" ]; then \
     # Install Git, Git LFS, and other dependencies
     apt-get update && apt-get install -y --no-install-recommends \
-        git git-lfs curl gnupg lsb-release \
+        git git-lfs gnupg lsb-release \
     && rm -rf /var/lib/apt/lists/* \
     # Install Docker CLI
     && mkdir -p /etc/apt/keyrings \
@@ -80,6 +81,9 @@ RUN if [ "$INCLUDE_GITHUB_ACTION_TOOLS" = "true" ]; then \
     && mkdir -p /github/workspace \
     && echo "WORKDIR=/github/workspace" >> /etc/environment; \
 fi
+
+COPY --chmod=755 download-provers.sh /tmp/
+RUN /tmp/download-provers.sh
 
 # Set appropriate workdir
 WORKDIR /app

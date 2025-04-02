@@ -1,5 +1,21 @@
 # aleo-containers
 
+## 📂 Project Structure
+
+The project consists of the following files:
+
+```
+.
+├── build-publish-leo.sh  # Build script for creating and publishing images
+├── leo.Dockerfile        # Multi-stage Dockerfile with non-standard name
+└── README.md            # This documentation file
+```
+
+The build script automatically:
+- Uses its own directory as the build context
+- References the Dockerfile using its non-standard name "leo.Dockerfile"
+- Supports both standard and CI image variants from the same Dockerfile# Leo Lang Docker Images
+
 This repository provides Docker images with the Leo programming language CLI tool, designed for building and running zero-knowledge applications. The images are available in two variants:
 
 - **Standard Image (`leo-lang`)**: Contains the Leo CLI tool with a Node.js environment
@@ -33,7 +49,7 @@ All components from the standard image, plus:
 
 - Git + Git LFS
 - Docker CLI
-- Docker Compose V2
+- Docker Compose
 - Additional utilities for CI environments
 
 ## 🚀 Usage
@@ -58,7 +74,7 @@ docker run --rm -it -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v2.4.1 /
 
 ### CI Image
 
-Designed for CI/CD pipelines, especially GitHub Actions and enables docker-in-docker (DinD):
+Designed for CI/CD pipelines, especially GitHub Actions:
 
 ```bash
 # Use with GitHub Actions
@@ -115,7 +131,7 @@ This repository provides a build script to create both image variants.
 ### Build Commands
 
 ```bash
-# Login to GitHub Container Registry
+# Login to GitHub Container Registry (only needed when pushing)
 cat ~/.github/token | docker login ghcr.io --username USERNAME --password-stdin
 
 # Build standard image only
@@ -130,6 +146,15 @@ cat ~/.github/token | docker login ghcr.io --username USERNAME --password-stdin
 # Build without tagging as latest
 ./build-publish-leo.sh --both --no-latest
 
+# Build locally without pushing to registry
+./build-publish-leo.sh --no-push
+
+# Build only for host architecture (faster development builds)
+./build-publish-leo.sh --local-arch
+
+# Local development build (single arch, no push)
+./build-publish-leo.sh --local-arch --no-push
+
 # Get help
 ./build-publish-leo.sh --help
 ```
@@ -140,30 +165,43 @@ The build process can be customized using environment variables:
 
 ```bash
 # Override Leo version
-export LEO_VERSION="v2.4.0"
+LEO_VERSION="v2.4.0" ./build-publish-leo.sh --both
 
 # Override Node.js version
-export NODE_VERSION=20
+NODE_VERSION=18 ./build-publish-leo.sh --both
 
 # Override base image distribution
-export DEBIAN_RELEASE=bullseye
+DEBIAN_RELEASE=bullseye ./build-publish-leo.sh --both
 
-# Run the build
-./build-publish-leo.sh --both
+# Override registry and organization
+REGISTRY="docker.io" USER="yourusername" ./build-publish-leo.sh --both
+
+# Multiple overrides at once
+LEO_VERSION="v2.4.0" NODE_VERSION=18 DEBIAN_RELEASE=bullseye ./build-publish-leo.sh --both
 ```
 
-## 📋 Dockerfile Details
+### Available Configuration Variables
 
-The Dockerfile uses a multi-stage build process:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REGISTRY` | ghcr.io | Container registry to push images to |
+| `USER` | sealance-io | Organization/username for the registry |
+| `IMAGE_NAME` | leo-lang | Base name for the images |
+| `LEO_VERSION` | v2.4.1 | Version of Leo to install |
+| `NODE_VERSION` | 22 | Node.js major version |
+| `DEBIAN_RELEASE` | bookworm | Debian release to use as base |
 
-1. **Builder Stage**: 
-   - Uses a Rust container to compile Leo from source
-   - Installs necessary build dependencies
+## 🛠️ Script Features
 
-2. **Final Stage**:
-   - Based on Node.js slim image
-   - Copies the Leo binary from the builder stage
-   - Conditionally installs GitHub Actions tools based on the `INCLUDE_GITHUB_ACTION_TOOLS` build argument
+The build script includes several features to ensure robust and flexible builds:
+
+- **Strict error handling** with `set -euo pipefail` to catch issues early
+- **Cross-platform compatibility** for both Linux and macOS
+- **Build context awareness** using the script's directory
+- **Non-standard Dockerfile support** using explicit -f flag
+- **Dynamic configuration** via environment variables or command-line options
+- **Multi-architecture support** for AMD64 and ARM64
+- **Flexible build targets** for local or remote, single or multi-architecture
 
 ## 🔍 Troubleshooting
 
