@@ -92,23 +92,22 @@ RUN if [ "$INCLUDE_GITHUB_ACTION_TOOLS" = "true" ]; then \
 fi
 
 # Add version verification script
-COPY --chmod=755 <<-"EOF" /usr/local/bin/check-versions
-#!/bin/sh
-echo "Installed tools:"
-echo "- Leo: $(leo --version)"
-echo "- Node.js: $(node --version)"
-echo "- NPM: $(npm --version)"
-echo "- libssl-dev: $(dpkg-query -W -f='${Version}\n' libssl-dev)"
-if command -v git &> /dev/null; then
-    echo "- Git: $(git --version)"
-fi
-if command -v docker &> /dev/null; then
-    echo "- Docker: $(docker --version)"
-fi
-if [ -x "/usr/local/lib/docker/cli-plugins/docker-compose" ]; then
-    echo "- Docker Compose: $(docker compose version)"
-fi
-EOF
+RUN echo '#!/bin/sh' > /usr/local/bin/check-versions \
+    && echo 'echo "Installed tools:"' >> /usr/local/bin/check-versions \
+    && echo 'echo "- Leo: $(leo --version)"' >> /usr/local/bin/check-versions \
+    && echo 'echo "- Node.js: $(node --version)"' >> /usr/local/bin/check-versions \
+    && echo 'echo "- NPM: $(npm --version)"' >> /usr/local/bin/check-versions \
+    && echo 'echo "- libssl-dev: $(dpkg-query -W -f='\''${Version}\\n'\'' libssl-dev)"' >> /usr/local/bin/check-versions \
+    && echo 'if command -v git &> /dev/null; then' >> /usr/local/bin/check-versions \
+    && echo '    echo "- Git: $(git --version)"' >> /usr/local/bin/check-versions \
+    && echo 'fi' >> /usr/local/bin/check-versions \
+    && echo 'if command -v docker &> /dev/null; then' >> /usr/local/bin/check-versions \
+    && echo '    echo "- Docker: $(docker --version)"' >> /usr/local/bin/check-versions \
+    && echo 'fi' >> /usr/local/bin/check-versions \
+    && echo 'if [ -x "/usr/local/lib/docker/cli-plugins/docker-compose" ]; then' >> /usr/local/bin/check-versions \
+    && echo '    echo "- Docker Compose: $(docker compose version)"' >> /usr/local/bin/check-versions \
+    && echo 'fi' >> /usr/local/bin/check-versions \
+    && chmod +x /usr/local/bin/check-versions
 
 # Add simple healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
