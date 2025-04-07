@@ -27,13 +27,15 @@ get_script_dir() {
 
 # Script directory will be used as build context
 SCRIPT_DIR=$(get_script_dir)
-DOCKERFILE="leo.Dockerfile"
 
-# Set values for variables
+# Set default values for variables
 REGISTRY=${REGISTRY:-"ghcr.io"}
 ORG="sealance-io"  # Hardcoded to avoid conflict with $USER env var
+
+# Default build configuration
 IMAGE_NAME=${IMAGE_NAME:-"leo-lang"}
-LEO_VERSION=${LEO_VERSION:-"v2.4.1"}
+DOCKERFILE=${DOCKERFILE:-"leo.Dockerfile"}
+PROJECT_VERSION=""  # Will be set based on the image type
 NODE_VERSION=${NODE_VERSION:-22}
 DEBIAN_RELEASE=${DEBIAN_RELEASE:-"bookworm"}
 
@@ -151,14 +153,34 @@ while [[ $# -gt 0 ]]; do
       echo "Building only for host architecture: $HOST_PLATFORM"
       shift
       ;;
+    --dockerfile)
+      if [[ $# -gt 1 ]]; then
+        DOCKERFILE="$2"
+        shift 2
+      else
+        echo "Error: Missing argument for --dockerfile"
+        exit 1
+      fi
+      ;;
+    --image-name)
+      if [[ $# -gt 1 ]]; then
+        IMAGE_NAME="$2"
+        shift 2
+      else
+        echo "Error: Missing argument for --image-name"
+        exit 1
+      fi
+      ;;
     --help)
-      echo "Usage: $0 [--standard] [--ci] [--both] [--no-latest] [--no-push] [--local-arch]"
-      echo "  --standard     Build standard leo-lang image (default)"
-      echo "  --ci           Build leo-lang-ci image with GitHub Actions tools"
-      echo "  --both         Build both image variants"
-      echo "  --no-latest    Don't tag images as 'latest'"
-      echo "  --no-push      Build locally only, don't push to registry"
-      echo "  --local-arch   Build only for the host architecture ($(detect_arch))"
+      echo "Usage: $0 [--standard] [--ci] [--both] [--no-latest] [--no-push] [--local-arch] [--dockerfile FILE] [--image-name NAME]"
+      echo "  --standard       Build standard image (default)"
+      echo "  --ci             Build image with GitHub Actions tools"
+      echo "  --both           Build both image variants"
+      echo "  --no-latest      Don't tag images as 'latest'"
+      echo "  --no-push        Build locally only, don't push to registry"
+      echo "  --local-arch     Build only for the host architecture ($(detect_arch))"
+      echo "  --dockerfile     Specify the Dockerfile to use (default: leo.Dockerfile)"
+      echo "  --image-name     Specify the base name for the image (default: leo-lang)"
       exit 0
       ;;
     *)
@@ -167,6 +189,22 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Set project-specific version variables based on image name
+if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
+  PROJECT_VERSION=${LEO_VERSION:-"v2.4.1"}
+  PROJECT_VERSION_ARG="LEO_VERSION"
+elif [[ "$IMAGE_NAME" == "amareleo-chain" ]]; then
+  PROJECT_VERSION=${AMARELEO_VERSION:-"v2.1.0"}
+  PROJECT_VERSION_ARG="AMARELEO_VERSION"
+else
+  echo "Error: Unknown image name: $IMAGE_NAME"
+  echo "Please specify a supported image name with --image-name"
+  exit 1
+fi
+
+echo "Building for $IMAGE_NAME with $DOCKERFILE"
+echo "Version: $PROJECT_VERSION"
 
 # Check registry credentials if we're pushing
 check_registry_credentials
@@ -181,6 +219,18 @@ build_and_push() {
   echo "Platforms: $PLATFORMS"
   echo "Push to registry: $([ "$PUSH_IMAGES" == "true" ] && echo "Yes" || echo "No")"
 
+  # Common build arguments for both podman and docker
+  local common_build_args=(
+    "--build-arg" "${PROJECT_VERSION_ARG}=${PROJECT_VERSION}"
+    "--build-arg" "DEBIAN_RELEASE=${DEBIAN_RELEASE}"
+    "--build-arg" "INCLUDE_GITHUB_ACTION_TOOLS=${include_github_tools}"
+  )
+  
+  # Add NODE_VERSION arg only for leo-lang image
+  if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
+    common_build_args+=("--build-arg" "NODE_VERSION=${NODE_VERSION}")
+  fi
+
   if hash podman 2>/dev/null; then
     echo "Using podman for ${manifest_name}"
 
@@ -189,16 +239,13 @@ build_and_push() {
       echo "Building single-arch local image with podman..."
       
       podman build \
-        --build-arg NODE_VERSION="${NODE_VERSION}" \
-        --build-arg DEBIAN_RELEASE="${DEBIAN_RELEASE}" \
-        --build-arg LEO_VERSION="${LEO_VERSION}" \
-        --build-arg INCLUDE_GITHUB_ACTION_TOOLS="${include_github_tools}" \
-        --tag "${full_image_name}:${LEO_VERSION}" \
+        "${common_build_args[@]}" \
+        --tag "${full_image_name}:${PROJECT_VERSION}" \
         -f "${SCRIPT_DIR}/${DOCKERFILE}" \
         "${SCRIPT_DIR}"
       
       if [[ "$TAG_LATEST" == "true" ]]; then
-        podman tag "${full_image_name}:${LEO_VERSION}" "${full_image_name}:latest"
+        podman tag "${full_image_name}:${PROJECT_VERSION}" "${full_image_name}:latest"
       fi
     else
       # Create a multi-architecture manifest (only if it doesn't exist)
@@ -218,11 +265,8 @@ build_and_push() {
 
       # Build for specified architecture(s)
       podman build \
-        --build-arg NODE_VERSION="${NODE_VERSION}" \
-        --build-arg DEBIAN_RELEASE="${DEBIAN_RELEASE}" \
-        --build-arg LEO_VERSION="${LEO_VERSION}" \
-        --build-arg INCLUDE_GITHUB_ACTION_TOOLS="${include_github_tools}" \
-        --tag "${full_image_name}:${LEO_VERSION}" \
+        "${common_build_args[@]}" \
+        --tag "${full_image_name}:${PROJECT_VERSION}" \
         --manifest ${manifest_name} \
         ${PLATFORM_ARGS} \
         -f "${SCRIPT_DIR}/${DOCKERFILE}" \
@@ -230,10 +274,10 @@ build_and_push() {
 
       # Push the version tag if requested
       if [[ "$PUSH_IMAGES" == "true" ]]; then
-        echo "Pushing ${full_image_name}:${LEO_VERSION}..."
+        echo "Pushing ${full_image_name}:${PROJECT_VERSION}..."
         retry_command podman manifest push --all \
           ${manifest_name} \
-          "docker://${full_image_name}:${LEO_VERSION}"
+          "docker://${full_image_name}:${PROJECT_VERSION}"
 
         # Push latest tag if enabled
         if [[ "$TAG_LATEST" == "true" ]]; then
@@ -264,17 +308,14 @@ build_and_push() {
     fi
 
     # Set up tags based on whether latest is enabled
-    TAGS=("--tag" "${full_image_name}:${LEO_VERSION}")
+    TAGS=("--tag" "${full_image_name}:${PROJECT_VERSION}")
     if [[ "$TAG_LATEST" == "true" ]]; then
       TAGS+=("--tag" "${full_image_name}:latest")
     fi
 
     # Build both amd64 and arm64 architecture containers and push if requested
     BUILD_ARGS=(
-      "--build-arg" "NODE_VERSION=${NODE_VERSION}"
-      "--build-arg" "DEBIAN_RELEASE=${DEBIAN_RELEASE}"
-      "--build-arg" "LEO_VERSION=${LEO_VERSION}"
-      "--build-arg" "INCLUDE_GITHUB_ACTION_TOOLS=${include_github_tools}"
+      "${common_build_args[@]}"
       "--platform" "${PLATFORMS}"
       "${TAGS[@]}"
     )
