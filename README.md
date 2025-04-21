@@ -159,6 +159,12 @@ The build script automatically:
 - Uses Docker BuildKit or Podman to build multi-architecture images
 - Targets specific stages in the Dockerfile for different image variants
 
+## 🔄 CI/CD Automation
+
+This repository includes automated workflows for building and publishing images.
+
+For detailed information about the CI/CD workflows, please see the [CI/CD documentation](./docs/CI.md).
+
 ## 🔧 Building Images Locally
 
 This repository provides a build script to create both image variants for any supported project.
