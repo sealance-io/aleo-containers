@@ -19,8 +19,8 @@ All images are multi-architecture, supporting AMD64 and ARM64 platforms.
 Pre-built images are available on GitHub Container Registry:
 
 #### Leo Lang
-- **Standard**: `ghcr.io/sealance-io/leo-lang:v2.4.1`
-- **CI**: `ghcr.io/sealance-io/leo-lang-ci:v2.4.1`
+- **Standard**: `ghcr.io/sealance-io/leo-lang:v2.5.0`
+- **CI**: `ghcr.io/sealance-io/leo-lang-ci:v2.5.0`
 
 #### Amareleo Chain
 - **Standard**: `ghcr.io/sealance-io/amareleo-chain:v2.1.0`
@@ -36,11 +36,15 @@ You can also use the `latest` tag to always get the most recent version.
 - Essential SSL libraries
 
 #### Leo Lang CI Image (`leo-lang-ci`)
-All components from the standard image, plus:
+- Leo CLI v2.4.1
+- Full Rust toolchain (v1.85.1)
+- Node.js v22
 - Git + Git LFS
 - Docker CLI
 - Docker Compose
-- Additional utilities for CI environments
+- Debian Bookworm (full)
+- Development libraries
+- GitHub Actions workspace setup
 
 #### Amareleo Chain Standard Image (`amareleo-chain`)
 - Amareleo Chain v2.1.0
@@ -86,6 +90,12 @@ docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
   ghcr.io/sealance-io/leo-lang-ci:v2.4.1 \
   bash -c "cd /github/workspace && leo build && docker-compose up -d"
+
+# Using the full Rust toolchain in the CI image
+docker run --rm -it \
+  -v $(pwd):/app \
+  ghcr.io/sealance-io/leo-lang-ci:v2.4.1 \
+  bash -c "cd /app && cargo build"
 ```
 
 ### Amareleo Chain Standard Image
@@ -119,7 +129,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/sealance-io/leo-lang-ci:v2.4.1
+      image: ghcr.io/sealance-io/leo-lang-ci:v2.5.0
     
     steps:
       - uses: actions/checkout@v3
@@ -146,7 +156,8 @@ The project consists of the following files:
 The build script automatically:
 - Uses its own directory as the build context
 - Supports building different image types with the same script
-- Can produce both standard and CI image variants from the same Dockerfile
+- Uses Docker BuildKit or Podman to build multi-architecture images
+- Targets specific stages in the Dockerfile for different image variants
 
 ## 🔧 Building Images Locally
 
@@ -238,6 +249,7 @@ The build script includes several features to ensure robust and flexible builds:
 - **Multi-architecture support** for AMD64 and ARM64
 - **Flexible build targets** for local or remote, single or multi-architecture
 - **Smart version handling** for different project types
+- **Target-based building** using Docker multi-stage builds
 
 ## ⚠️ Compatibility Notes
 

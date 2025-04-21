@@ -210,12 +210,12 @@ echo "Version: $PROJECT_VERSION"
 check_registry_credentials
 
 build_and_push() {
-  local include_github_tools=$1
+  local target_stage=$1
   local image_suffix=$2
   local manifest_name="${IMAGE_NAME}${image_suffix}"
   local full_image_name="${REGISTRY}/${ORG}/${IMAGE_NAME}${image_suffix}"
   
-  echo "Building ${manifest_name} image..."
+  echo "Building ${manifest_name} image with target stage: ${target_stage}..."
   echo "Platforms: $PLATFORMS"
   echo "Push to registry: $([ "$PUSH_IMAGES" == "true" ] && echo "Yes" || echo "No")"
 
@@ -223,7 +223,6 @@ build_and_push() {
   local common_build_args=(
     "--build-arg" "${PROJECT_VERSION_ARG}=${PROJECT_VERSION}"
     "--build-arg" "DEBIAN_RELEASE=${DEBIAN_RELEASE}"
-    "--build-arg" "INCLUDE_GITHUB_ACTION_TOOLS=${include_github_tools}"
   )
   
   # Add NODE_VERSION arg only for leo-lang image
@@ -240,6 +239,7 @@ build_and_push() {
       
       podman build \
         "${common_build_args[@]}" \
+        --target "${target_stage}" \
         --tag "${full_image_name}:${PROJECT_VERSION}" \
         -f "${SCRIPT_DIR}/${DOCKERFILE}" \
         "${SCRIPT_DIR}"
@@ -266,6 +266,7 @@ build_and_push() {
       # Build for specified architecture(s)
       podman build \
         "${common_build_args[@]}" \
+        --target "${target_stage}" \
         --tag "${full_image_name}:${PROJECT_VERSION}" \
         --manifest ${manifest_name} \
         ${PLATFORM_ARGS} \
@@ -316,6 +317,7 @@ build_and_push() {
     # Build both amd64 and arm64 architecture containers and push if requested
     BUILD_ARGS=(
       "${common_build_args[@]}"
+      "--target" "${target_stage}"
       "--platform" "${PLATFORMS}"
       "${TAGS[@]}"
     )
@@ -350,12 +352,12 @@ build_and_push() {
 
 # Build standard image
 if [[ "$BUILD_STANDARD" == "true" ]]; then
-  build_and_push "false" ""
+  build_and_push "leo" ""
 fi
 
 # Build CI image
 if [[ "$BUILD_CI" == "true" ]]; then
-  build_and_push "true" "-ci"
+  build_and_push "leo-ci" "-ci"
 fi
 
 echo "Build and push process completed successfully!"
