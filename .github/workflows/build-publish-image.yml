@@ -1,0 +1,211 @@
+name: Build and Publish Docker Images
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: 'Name of the image to build (e.g., leo-lang, amareleo-chain)'
+        required: true
+        type: string
+      dockerfile:
+        description: 'Path to the Dockerfile'
+        required: true
+        type: string
+      build_standard:
+        description: 'Build standard image'
+        required: false
+        default: true
+        type: boolean
+      build_ci:
+        description: 'Build CI image (only applicable for leo-lang)'
+        required: false
+        default: false
+        type: boolean
+      tag_latest:
+        description: 'Tag as latest'
+        required: false
+        default: false
+        type: boolean
+      registry:
+        description: 'Container registry'
+        required: false
+        default: 'ghcr.io'
+        type: string
+      organization:
+        description: 'Organization in the registry'
+        required: false
+        default: 'sealance-io'
+        type: string
+      project_version:
+        description: 'Project version to build (e.g., v2.5.0)'
+        required: true
+        type: string
+      project_repo:
+        description: 'Project repository URL'
+        required: false
+        type: string
+      node_version:
+        description: 'Node.js version for leo-lang'
+        required: false
+        default: '22'
+        type: string
+      debian_release:
+        description: 'Debian release to use'
+        required: false
+        default: 'bookworm'
+        type: string
+    secrets:
+      registry_token:
+        description: 'Token for container registry authentication'
+        required: true
+
+jobs:
+  determine-params:
+    runs-on: ubuntu-latest
+    outputs:
+      project_repo: ${{ steps.set-params.outputs.project_repo }}
+      project_repo_arg: ${{ steps.set-params.outputs.project_repo_arg }}
+      project_version_arg: ${{ steps.set-params.outputs.project_version_arg }}
+      uses_target: ${{ steps.set-params.outputs.uses_target }}
+    steps:
+      - name: Set project-specific parameters
+        id: set-params
+        run: |
+          if [[ "${{ inputs.image_name }}" == "leo-lang" ]]; then
+            echo "project_repo_arg=LEO_REPO" >> $GITHUB_OUTPUT
+            echo "project_version_arg=LEO_VERSION" >> $GITHUB_OUTPUT
+            echo "project_repo=${{ inputs.project_repo || 'https://github.com/ProvableHQ/leo' }}" >> $GITHUB_OUTPUT
+            echo "uses_target=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ inputs.image_name }}" == "amareleo-chain" ]]; then
+            echo "project_repo_arg=AMARELEO_REPO" >> $GITHUB_OUTPUT
+            echo "project_version_arg=AMARELEO_VERSION" >> $GITHUB_OUTPUT
+            echo "project_repo=${{ inputs.project_repo || 'https://github.com/kaxxa123/amareleo-chain' }}" >> $GITHUB_OUTPUT
+            echo "uses_target=false" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Unknown image name: ${{ inputs.image_name }}"
+            exit 1
+          fi
+
+  validate-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate CI image compatibility
+        if: inputs.image_name == 'amareleo-chain' && inputs.build_ci
+        run: |
+          echo "::error::CI image is not available for amareleo-chain"
+          exit 1
+
+  build-standard:
+    needs: [determine-params, validate-inputs]
+    if: inputs.build_standard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.registry_token }}
+
+      - name: Prepare Image Tags
+        id: prep
+        run: |
+          FULL_IMAGE_NAME=${{ inputs.registry }}/${{ inputs.organization }}/${{ inputs.image_name }}
+          
+          # Set both version tag and latest tag if requested
+          TAGS="${FULL_IMAGE_NAME}:${{ inputs.project_version }}"
+          if [[ "${{ inputs.tag_latest }}" == "true" ]]; then
+            TAGS="${TAGS},${FULL_IMAGE_NAME}:latest"
+          fi
+          
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+
+      - name: Build and Push Leo Standard
+        if: inputs.image_name == 'leo-lang'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ inputs.dockerfile }}
+          push: true
+          tags: ${{ steps.prep.outputs.tags }}
+          target: leo
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
+            ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
+            NODE_VERSION=${{ inputs.node_version }}
+            DEBIAN_RELEASE=${{ inputs.debian_release }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and Push Amareleo Standard
+        if: inputs.image_name == 'amareleo-chain'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ inputs.dockerfile }}
+          push: true
+          tags: ${{ steps.prep.outputs.tags }}
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
+            ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
+            DEBIAN_RELEASE=${{ inputs.debian_release }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-ci:
+    needs: [determine-params, validate-inputs]
+    if: inputs.build_ci && inputs.image_name == 'leo-lang'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.registry_token }}
+
+      - name: Prepare Image Tags
+        id: prep
+        run: |
+          FULL_IMAGE_NAME=${{ inputs.registry }}/${{ inputs.organization }}/${{ inputs.image_name }}-ci
+          
+          # Set both version tag and latest tag if requested
+          TAGS="${FULL_IMAGE_NAME}:${{ inputs.project_version }}"
+          if [[ "${{ inputs.tag_latest }}" == "true" ]]; then
+            TAGS="${TAGS},${FULL_IMAGE_NAME}:latest"
+          fi
+          
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+
+      - name: Build and Push Leo CI
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ inputs.dockerfile }}
+          push: true
+          tags: ${{ steps.prep.outputs.tags }}
+          target: leo-ci
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
+            ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
+            NODE_VERSION=${{ inputs.node_version }}
+            DEBIAN_RELEASE=${{ inputs.debian_release }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
