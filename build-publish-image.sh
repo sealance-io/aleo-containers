@@ -15,14 +15,15 @@ set -euo pipefail
 # Get script directory (works on both Linux and macOS)
 get_script_dir() {
   local source="${BASH_SOURCE[0]}"
+  local dir
   # Resolve $source until the file is no longer a symlink
   while [ -L "$source" ]; do
-    local dir="$(cd -P "$(dirname "$source")" && pwd)"
+    dir="$(cd -P "$(dirname "$source")" && pwd)"
     source="$(readlink "$source")"
     # If $source was a relative symlink, we need to resolve it relative to the path where the symlink file was located
     [[ $source != /* ]] && source="$dir/$source"
   done
-  echo "$(cd -P "$(dirname "$source")" && pwd)"
+  cd -P "$(dirname "$source")" && pwd
 }
 
 # Script directory will be used as build context
@@ -52,7 +53,8 @@ HOST_ARCH_ONLY=false
 
 # Get host architecture
 detect_arch() {
-  local arch=$(uname -m)
+  local arch
+  arch=$(uname -m)
   case "$arch" in
     x86_64)
       echo "linux/amd64"
@@ -84,7 +86,7 @@ check_registry_credentials() {
     else
       if ! docker login --get-login "${REGISTRY}" &>/dev/null 2>&1; then
         # Docker doesn't have a simple way to check login status, try a minimal API call
-        if ! curl -s -H "Authorization: Bearer $(docker config inspect --format='{{index .AuthConfigs "'${REGISTRY}'" "Auth"}}' ~/.docker/config.json 2>/dev/null || echo "")" \
+        if ! curl -s -H "Authorization: Bearer $(docker config inspect --format='{{index .AuthConfigs "'"${REGISTRY}"'" "Auth"}}' ~/.docker/config.json 2>/dev/null || echo "")" \
             "https://${REGISTRY}/v2/" | grep -q "Docker Registry API"; then
           echo "Warning: Not logged in to ${REGISTRY}. Image pushing will likely fail."
           echo "Please run: docker login ${REGISTRY} -u <USERNAME>"
@@ -249,9 +251,9 @@ build_and_push() {
       fi
     else
       # Create a multi-architecture manifest (only if it doesn't exist)
-      if ! podman manifest exists ${manifest_name} &>/dev/null; then
+      if ! podman manifest exists "${manifest_name}" &>/dev/null; then
         echo "Creating new manifest: ${manifest_name}"
-        podman manifest create ${manifest_name}
+        podman manifest create "${manifest_name}"
       else
         echo "Using existing manifest: ${manifest_name}"
       fi
@@ -268,8 +270,8 @@ build_and_push() {
         "${common_build_args[@]}" \
         --target "${target_stage}" \
         --tag "${full_image_name}:${PROJECT_VERSION}" \
-        --manifest ${manifest_name} \
-        ${PLATFORM_ARGS} \
+        --manifest "${manifest_name}" \
+        "${PLATFORM_ARGS}" \
         -f "${SCRIPT_DIR}/${DOCKERFILE}" \
         "${SCRIPT_DIR}"
 
@@ -277,14 +279,14 @@ build_and_push() {
       if [[ "$PUSH_IMAGES" == "true" ]]; then
         echo "Pushing ${full_image_name}:${PROJECT_VERSION}..."
         retry_command podman manifest push --all \
-          ${manifest_name} \
+          "${manifest_name}" \
           "docker://${full_image_name}:${PROJECT_VERSION}"
 
         # Push latest tag if enabled
         if [[ "$TAG_LATEST" == "true" ]]; then
           echo "Tagging and pushing as latest..."
           retry_command podman manifest push --all \
-            ${manifest_name} \
+            "${manifest_name}" \
             "docker://${full_image_name}:latest"
         fi
       else
