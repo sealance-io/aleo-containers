@@ -8,6 +8,7 @@ ARG RUST_VERSION=1.85.1
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as builder
 
 ARG LEO_VERSION=v2.5.0
+ARG LEO_REPO=https://github.com/ProvableHQ/leo
 # Force rust to use external Git instead of the internal libgit wrapper
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
@@ -22,7 +23,7 @@ RUN apt-get update \
 WORKDIR /app
 
 # Clone repo and build Leo CLI
-RUN git clone -b "${LEO_VERSION}" --recurse-submodules --single-branch --depth 1 https://github.com/ProvableHQ/leo
+RUN git clone -b "${LEO_VERSION}" --recurse-submodules --single-branch --depth 1 "${LEO_REPO}"
 
 WORKDIR /app/leo
 
@@ -36,7 +37,7 @@ RUN cargo +${RUST_VERSION} install --path .
 # Stage 2: Create minimal leo image
 FROM node:${NODE_VERSION}-${DEBIAN_RELEASE}-slim as leo
 
-LABEL org.opencontainers.image.source="https://github.com/ProvableHQ/leo"
+LABEL org.opencontainers.image.source="${LEO_REPO}"
 LABEL org.opencontainers.image.description="Leo CLI with NodeJS environment"
 
 # Copy leo-lang binary from the builder stage
@@ -73,7 +74,8 @@ CMD ["check-versions"]
 # Stage 3: Create CI image with full toolchains
 FROM debian:${DEBIAN_RELEASE} as leo-ci
 
-LABEL org.opencontainers.image.source="https://github.com/ProvableHQ/leo"
+ARG LEO_REPO
+LABEL org.opencontainers.image.source="${LEO_REPO}"
 LABEL org.opencontainers.image.description="Leo CLI with full development and CI environment"
 
 # Install Node.js - reusing the specified version

@@ -37,6 +37,7 @@ ORG="sealance-io"  # Hardcoded to avoid conflict with $USER env var
 IMAGE_NAME=${IMAGE_NAME:-"leo-lang"}
 DOCKERFILE=${DOCKERFILE:-"leo.Dockerfile"}
 PROJECT_VERSION=""  # Will be set based on the image type
+PROJECT_REPO=""     # Will be set based on the image type
 NODE_VERSION=${NODE_VERSION:-22}
 DEBIAN_RELEASE=${DEBIAN_RELEASE:-"bookworm"}
 
@@ -176,8 +177,8 @@ while [[ $# -gt 0 ]]; do
     --help)
       echo "Usage: $0 [--standard] [--ci] [--both] [--no-latest] [--no-push] [--local-arch] [--dockerfile FILE] [--image-name NAME]"
       echo "  --standard       Build standard image (default)"
-      echo "  --ci             Build image with GitHub Actions tools"
-      echo "  --both           Build both image variants"
+      echo "  --ci             Build image with GitHub Actions tools (only for leo-lang)"
+      echo "  --both           Build both image variants (only for leo-lang)"
       echo "  --no-latest      Don't tag images as 'latest'"
       echo "  --no-push        Build locally only, don't push to registry"
       echo "  --local-arch     Build only for the host architecture ($(detect_arch))"
@@ -194,11 +195,22 @@ done
 
 # Set project-specific version variables based on image name
 if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
-  PROJECT_VERSION=${LEO_VERSION:-"v2.4.1"}
+  PROJECT_VERSION=${LEO_VERSION:-"v2.5.0"}
   PROJECT_VERSION_ARG="LEO_VERSION"
+  PROJECT_REPO=${LEO_REPO:-"https://github.com/ProvableHQ/leo"}
+  PROJECT_REPO_ARG="LEO_REPO"
 elif [[ "$IMAGE_NAME" == "amareleo-chain" ]]; then
-  PROJECT_VERSION=${AMARELEO_VERSION:-"v2.1.0"}
+  # Amareleo-chain doesn't support CI image
+  if [[ "$BUILD_CI" == "true" ]]; then
+    echo "Error: CI image is not available for amareleo-chain"
+    echo "Use --standard instead of --ci or --both"
+    exit 1
+  fi
+  
+  PROJECT_VERSION=${AMARELEO_VERSION:-"v2.2.0"}
   PROJECT_VERSION_ARG="AMARELEO_VERSION"
+  PROJECT_REPO=${AMARELEO_REPO:-"https://github.com/kaxxa123/amareleo-chain"}
+  PROJECT_REPO_ARG="AMARELEO_REPO"
 else
   echo "Error: Unknown image name: $IMAGE_NAME"
   echo "Please specify a supported image name with --image-name"
@@ -207,6 +219,7 @@ fi
 
 echo "Building for $IMAGE_NAME with $DOCKERFILE"
 echo "Version: $PROJECT_VERSION"
+echo "Repository: $PROJECT_REPO"
 
 # Check registry credentials if we're pushing
 check_registry_credentials
@@ -217,13 +230,22 @@ build_and_push() {
   local manifest_name="${IMAGE_NAME}${image_suffix}"
   local full_image_name="${REGISTRY}/${ORG}/${IMAGE_NAME}${image_suffix}"
   
-  echo "Building ${manifest_name} image with target stage: ${target_stage}..."
+  # Determine if we should use target parameter
+  local use_target=false
+  if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
+    use_target=true
+    echo "Building ${manifest_name} image with target stage: ${target_stage}..."
+  else
+    echo "Building ${manifest_name} image..."
+  fi
+  
   echo "Platforms: $PLATFORMS"
   echo "Push to registry: $([ "$PUSH_IMAGES" == "true" ] && echo "Yes" || echo "No")"
 
   # Common build arguments for both podman and docker
   local common_build_args=(
     "--build-arg" "${PROJECT_VERSION_ARG}=${PROJECT_VERSION}"
+    "--build-arg" "${PROJECT_REPO_ARG}=${PROJECT_REPO}"
     "--build-arg" "DEBIAN_RELEASE=${DEBIAN_RELEASE}"
   )
   
@@ -239,9 +261,13 @@ build_and_push() {
     if [[ "$HOST_ARCH_ONLY" == "true" && "$PUSH_IMAGES" == "false" ]]; then
       echo "Building single-arch local image with podman..."
       
+      local podman_args=("${common_build_args[@]}")
+      if [[ "$use_target" == "true" ]]; then
+        podman_args+=("--target" "${target_stage}")
+      fi
+      
       podman build \
-        "${common_build_args[@]}" \
-        --target "${target_stage}" \
+        "${podman_args[@]}" \
         --tag "${full_image_name}:${PROJECT_VERSION}" \
         -f "${SCRIPT_DIR}/${DOCKERFILE}" \
         "${SCRIPT_DIR}"
@@ -259,19 +285,23 @@ build_and_push() {
       fi
 
       # Split platforms into array for podman
-      IFS=',' read -ra PLATFORM_ARRAY <<< "$PLATFORMS"
-      PLATFORM_ARGS=""
-      for platform in "${PLATFORM_ARRAY[@]}"; do
-        PLATFORM_ARGS+=" --platform=${platform}"
+      IFS=',' read -ra PLATFORM_LIST <<< "$PLATFORMS"
+      platform_args=()
+      for platform in "${PLATFORM_LIST[@]}"; do
+        platform_args+=("--platform" "$platform")
       done
 
       # Build for specified architecture(s)
+      local podman_build_args=("${common_build_args[@]}")
+      if [[ "$use_target" == "true" ]]; then
+        podman_build_args+=("--target" "${target_stage}")
+      fi
+      
       podman build \
-        "${common_build_args[@]}" \
-        --target "${target_stage}" \
+        "${podman_build_args[@]}" \
         --tag "${full_image_name}:${PROJECT_VERSION}" \
         --manifest "${manifest_name}" \
-        "${PLATFORM_ARGS}" \
+        "${platform_args[@]}" \
         -f "${SCRIPT_DIR}/${DOCKERFILE}" \
         "${SCRIPT_DIR}"
 
@@ -319,10 +349,14 @@ build_and_push() {
     # Build both amd64 and arm64 architecture containers and push if requested
     BUILD_ARGS=(
       "${common_build_args[@]}"
-      "--target" "${target_stage}"
       "--platform" "${PLATFORMS}"
       "${TAGS[@]}"
     )
+    
+    # Only add target for leo-lang
+    if [[ "$use_target" == "true" ]]; then
+      BUILD_ARGS+=("--target" "${target_stage}")
+    fi
 
     # Add output type based on push flag
     if [[ "$PUSH_IMAGES" == "true" ]]; then
@@ -354,12 +388,20 @@ build_and_push() {
 
 # Build standard image
 if [[ "$BUILD_STANDARD" == "true" ]]; then
-  build_and_push "leo" ""
+  if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
+    build_and_push "leo" ""
+  else
+    build_and_push "" ""  # No target for amareleo-chain
+  fi
 fi
 
-# Build CI image
+# Build CI image (only for leo-lang)
 if [[ "$BUILD_CI" == "true" ]]; then
-  build_and_push "leo-ci" "-ci"
+  # This check is redundant since we already check earlier,
+  # but keeping it for clarity and safety
+  if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
+    build_and_push "leo-ci" "-ci"
+  fi
 fi
 
 echo "Build and push process completed successfully!"

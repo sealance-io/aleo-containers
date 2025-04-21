@@ -6,7 +6,8 @@ ARG RUST_VERSION=1.85.1
 # Stage 1: Build leo-lang from source
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as builder
 
-ARG AMARELEO_VERSION=v2.1.0
+ARG AMARELEO_VERSION=v2.2.0
+ARG AMARELEO_REPO=https://github.com/kaxxa123/amareleo-chain
 # Force rust to use external Git instead of the internal libgit wrapper
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
@@ -23,7 +24,7 @@ RUN apt-get update \
 WORKDIR /app
 
 # Clone repo and build Leo CLI
-RUN git clone -b "${AMARELEO_VERSION}" --recurse-submodules --single-branch --depth 1 https://github.com/kaxxa123/amareleo-chain
+RUN git clone -b "${AMARELEO_VERSION}" --recurse-submodules --single-branch --depth 1 "${AMARELEO_REPO}"
 
 WORKDIR /app/amareleo-chain
 
@@ -39,10 +40,11 @@ FROM debian:${DEBIAN_RELEASE}-slim
 
 # Re-declare the build arg in the final stage to ensure proper variable scope
 ARG DEBIAN_RELEASE
+ARG AMARELEO_REPO
 
-LABEL org.opencontainers.image.source="https://github.com/kaxxa123/amareleo-chain"
+LABEL org.opencontainers.image.source="${AMARELEO_REPO}"
 LABEL org.opencontainers.image.description="Amareleo Chain node"
-LABEL org.opencontainers.image.documentation="https://github.com/kaxxa123/amareleo-chain"
+LABEL org.opencontainers.image.documentation="${AMARELEO_REPO}"
 
 # Copy amareleo-chain binary from the builder stage
 COPY --from=builder /usr/local/cargo/bin/amareleo-chain /usr/local/bin/

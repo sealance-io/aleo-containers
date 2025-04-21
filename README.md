@@ -23,20 +23,20 @@ Pre-built images are available on GitHub Container Registry:
 - **CI**: `ghcr.io/sealance-io/leo-lang-ci:v2.5.0`
 
 #### Amareleo Chain
-- **Standard**: `ghcr.io/sealance-io/amareleo-chain:v2.1.0`
+- **Standard**: `ghcr.io/sealance-io/amareleo-chain:v2.2.0`
 
 You can also use the `latest` tag to always get the most recent version.
 
 ### Image Contents
 
 #### Leo Lang Standard Image (`leo-lang`)
-- Leo CLI v2.4.1
+- Leo CLI v2.5.0
 - Node.js v22
 - Debian Bookworm (slim)
 - Essential SSL libraries
 
 #### Leo Lang CI Image (`leo-lang-ci`)
-- Leo CLI v2.4.1
+- Leo CLI v2.5.0
 - Full Rust toolchain (v1.85.1)
 - Node.js v22
 - Git + Git LFS
@@ -47,7 +47,7 @@ You can also use the `latest` tag to always get the most recent version.
 - GitHub Actions workspace setup
 
 #### Amareleo Chain Standard Image (`amareleo-chain`)
-- Amareleo Chain v2.1.0
+- Amareleo Chain v2.2.0
 - Debian Bookworm (slim)
 - Essential SSL libraries
 - Running as non-root user
@@ -60,16 +60,16 @@ Perfect for development, deployment, and running Leo applications:
 
 ```bash
 # Run the Leo CLI directly
-docker run --rm ghcr.io/sealance-io/leo-lang:v2.4.1 leo --help
+docker run --rm ghcr.io/sealance-io/leo-lang:v2.5.0 leo --help
 
 # Check installed versions
-docker run --rm ghcr.io/sealance-io/leo-lang:v2.4.1
+docker run --rm ghcr.io/sealance-io/leo-lang:v2.5.0
 
 # Mount your project directory and work with Leo
-docker run --rm -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v2.4.1 leo build
+docker run --rm -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v2.5.0 leo build
 
 # Start a shell in the container
-docker run --rm -it -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v2.4.1 /bin/bash
+docker run --rm -it -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v2.5.0 /bin/bash
 ```
 
 ### Leo Lang CI Image
@@ -80,7 +80,7 @@ Designed for CI/CD pipelines, especially GitHub Actions:
 # Use with GitHub Actions
 steps:
   - name: Build with Leo
-    uses: docker://ghcr.io/sealance-io/leo-lang-ci:v2.4.1
+    uses: docker://ghcr.io/sealance-io/leo-lang-ci:v2.5.0
     with:
       args: 'leo build'
 
@@ -88,13 +88,13 @@ steps:
 docker run --rm \
   -v $(pwd):/github/workspace \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  ghcr.io/sealance-io/leo-lang-ci:v2.4.1 \
+  ghcr.io/sealance-io/leo-lang-ci:v2.5.0 \
   bash -c "cd /github/workspace && leo build && docker-compose up -d"
 
 # Using the full Rust toolchain in the CI image
 docker run --rm -it \
   -v $(pwd):/app \
-  ghcr.io/sealance-io/leo-lang-ci:v2.4.1 \
+  ghcr.io/sealance-io/leo-lang-ci:v2.5.0 \
   bash -c "cd /app && cargo build"
 ```
 
@@ -106,12 +106,12 @@ For running an Amareleo blockchain node:
 # Run node with default settings
 docker run -d -p 3030:3030 -p 9000:9000 \
   -v $(pwd)/data:/data/amareleo \
-  ghcr.io/sealance-io/amareleo-chain:v2.1.0
+  ghcr.io/sealance-io/amareleo-chain:v2.2.0
 
 # Run with custom parameters
 docker run -d -p 3030:3030 -p 9000:9000 \
   -v $(pwd)/data:/data/amareleo \
-  ghcr.io/sealance-io/amareleo-chain:v2.1.0 \
+  ghcr.io/sealance-io/amareleo-chain:v2.2.0 \
   amareleo-chain start --network 2 --verbosity 2 --rest 0.0.0.0:3030
 ```
 #### GitHub Actions Example
@@ -218,8 +218,14 @@ The build process can be customized using environment variables:
 # Override Leo version
 LEO_VERSION="v2.4.0" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 
+# Override Leo repository URL
+LEO_REPO="https://github.com/your-fork/leo" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
+
 # Override Amareleo version
 AMARELEO_VERSION="v2.0.0" ./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain
+
+# Override Amareleo repository URL
+AMARELEO_REPO="https://github.com/your-fork/amareleo-chain" ./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain
 
 # Override Node.js version (Leo Lang only)
 NODE_VERSION=18 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
@@ -234,7 +240,7 @@ REGISTRY="docker.io" ./build-publish-image.sh --dockerfile leo.Dockerfile --imag
 IMAGE_NAME="custom-leo" ./build-publish-image.sh --dockerfile leo.Dockerfile
 
 # Multiple overrides at once
-LEO_VERSION="v2.4.0" NODE_VERSION=18 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
+LEO_VERSION="v2.4.0" LEO_REPO="https://github.com/your-fork/leo" NODE_VERSION=18 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 ```
 
 ## 🛠️ Script Features
@@ -250,6 +256,7 @@ The build script includes several features to ensure robust and flexible builds:
 - **Flexible build targets** for local or remote, single or multi-architecture
 - **Smart version handling** for different project types
 - **Target-based building** using Docker multi-stage builds
+- **Repository customization** for building from forks or different sources
 
 ## ⚠️ Compatibility Notes
 
@@ -291,7 +298,7 @@ echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 Add the appropriate user permissions:
 
 ```bash
-docker run --rm -v $(pwd):/app -w /app --user $(id -u):$(id -g) ghcr.io/sealance-io/leo-lang:v2.4.1 leo build
+docker run --rm -v $(pwd):/app -w /app --user $(id -u):$(id -g) ghcr.io/sealance-io/leo-lang:v2.5.0 leo build
 ```
 
 ## 📜 License
