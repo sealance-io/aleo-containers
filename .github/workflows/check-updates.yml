@@ -37,12 +37,25 @@ jobs:
           echo "organization=sealance-io" >> $GITHUB_OUTPUT
           echo "min_leo_version=${{ inputs.minimum_leo_version || 'v2.4.1' }}" >> $GITHUB_OUTPUT
           echo "min_amareleo_version=${{ inputs.minimum_amareleo_version || 'v2.1.0' }}" >> $GITHUB_OUTPUT
+
+      - name: Setup for Act detection
+        id: detect_act
+        run: |
+          # Determine if we're running under Act
+          if [ -n "$ACT" ]; then
+            echo "Running in Act testing mode"
+            echo "testing_mode=true" >> $GITHUB_OUTPUT
+          else
+            echo "testing_mode=false" >> $GITHUB_OUTPUT
+          fi
       
       - name: Authenticate with Registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Check for new Leo releases
         id: check-leo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # This ensures gh CLI has the token
         run: |
           # Set minimum version
           MIN_VERSION="${{ steps.vars.outputs.min_leo_version }}"
@@ -52,9 +65,15 @@ jobs:
           
           # Get the latest releases from GitHub
           LATEST_TAGS=$(gh api repos/${{ steps.vars.outputs.leo_repo }}/releases --jq '.[].tag_name' | sort -V)
-          
+
           # Get current tags from the container registry
-          EXISTING_TAGS=$(docker buildx imagetools inspect ${{ steps.vars.outputs.registry }}/${{ steps.vars.outputs.organization }}/leo-lang --format '{{json .Manifest}}' 2>/dev/null | jq -r '.tags[]' || echo "")
+          readarray -t EXISTING_TAGS < <(
+            curl -sSL \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/orgs/${{ steps.vars.outputs.organization }}/packages/container/leo-lang/versions?per_page=100" \
+            | jq -r '.[].metadata.container.tags[]'
+          )
           
           NEW_TAGS=""
           QUALIFIED_TAGS=()
@@ -99,6 +118,8 @@ jobs:
 
       - name: Check for new Amareleo releases
         id: check-amareleo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # This ensures gh CLI has the token
         run: |
           # Set minimum version
           MIN_VERSION="${{ steps.vars.outputs.min_amareleo_version }}"
@@ -110,7 +131,13 @@ jobs:
           LATEST_TAGS=$(gh api repos/${{ steps.vars.outputs.amareleo_repo }}/releases --jq '.[].tag_name' | sort -V)
           
           # Get current tags from the container registry
-          EXISTING_TAGS=$(docker buildx imagetools inspect ${{ steps.vars.outputs.registry }}/${{ steps.vars.outputs.organization }}/amareleo-chain --format '{{json .Manifest}}' 2>/dev/null | jq -r '.tags[]' || echo "")
+          readarray -t EXISTING_TAGS < <(
+            curl -sSL \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/orgs/${{ steps.vars.outputs.organization }}/packages/container/amareleo-chain/versions?per_page=100" \
+            | jq -r '.[].metadata.container.tags[]'
+          )
           
           NEW_TAGS=""
           QUALIFIED_TAGS=()
@@ -153,8 +180,8 @@ jobs:
           echo "new_tags=${NEW_TAGS}" >> $GITHUB_OUTPUT
           echo "latest_version=${LATEST_VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Trigger Leo builds
-        if: steps.check-leo.outputs.new_tags != ''
+      - name: Trigger Leo builds (GitHub)
+        if: steps.check-leo.outputs.new_tags != '' && !steps.detect_act.outputs.testing_mode
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -183,8 +210,8 @@ jobs:
               });
             }
 
-      - name: Trigger Amareleo builds
-        if: steps.check-amareleo.outputs.new_tags != ''
+      - name: Trigger Amareleo builds (Github)
+        if: steps.check-amareleo.outputs.new_tags != '' && !steps.detect_act.outputs.testing_mode
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -211,3 +238,62 @@ jobs:
                 }
               });
             }
+
+      # Mock triggers for Act testing
+      - name: Mock workflow triggers for Act testing
+        if: steps.detect_act.outputs.testing_mode
+        run: |
+          echo "===== Mock Triggers for Act Testing ====="
+          
+          # Process Leo triggers
+          if [ -n "${{ steps.check-leo.outputs.new_tags }}" ]; then
+            echo "Leo tags to build: ${{ steps.check-leo.outputs.new_tags }}"
+            echo "Leo latest version: ${{ steps.check-leo.outputs.latest_version }}"
+            
+            IFS=',' read -ra TAGS <<< "${{ steps.check-leo.outputs.new_tags }}"
+            LATEST="${{ steps.check-leo.outputs.latest_version }}"
+            
+            for TAG in "${TAGS[@]}"; do
+              IS_LATEST="false"
+              if [ "$TAG" = "$LATEST" ]; then
+                IS_LATEST="true"
+              fi
+              
+              echo "Would trigger: build-publish-image.yml for Leo with:"
+              echo "  - image_name: leo-lang"
+              echo "  - dockerfile: leo.Dockerfile" 
+              echo "  - build_standard: true"
+              echo "  - build_ci: true"
+              echo "  - tag_latest: $IS_LATEST"
+              echo "  - project_version: $TAG"
+              echo ""
+            done
+          else
+            echo "No new Leo tags to build"
+          fi
+          
+          # Process Amareleo triggers
+          if [ -n "${{ steps.check-amareleo.outputs.new_tags }}" ]; then
+            echo "Amareleo tags to build: ${{ steps.check-amareleo.outputs.new_tags }}"
+            echo "Amareleo latest version: ${{ steps.check-amareleo.outputs.latest_version }}"
+            
+            IFS=',' read -ra TAGS <<< "${{ steps.check-amareleo.outputs.new_tags }}"
+            LATEST="${{ steps.check-amareleo.outputs.latest_version }}"
+            
+            for TAG in "${TAGS[@]}"; do
+              IS_LATEST="false"
+              if [ "$TAG" = "$LATEST" ]; then
+                IS_LATEST="true"
+              fi
+              
+              echo "Would trigger: build-publish-image.yml for Amareleo with:"
+              echo "  - image_name: amareleo-chain"
+              echo "  - dockerfile: amareleo.Dockerfile"
+              echo "  - build_standard: true"
+              echo "  - tag_latest: $IS_LATEST"
+              echo "  - project_version: $TAG"
+              echo ""
+            done
+          else
+            echo "No new Amareleo tags to build"
+          fi
