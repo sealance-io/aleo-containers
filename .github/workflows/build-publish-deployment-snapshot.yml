@@ -1,0 +1,37 @@
+name: Create amareleo deployment snapshot
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create-deployment-snapshot-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      actions: read
+    timeout-minutes: 60
+    container:
+      image: ghcr.io/sealance-io/leo-lang-ci:v2.5.0
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.github_token }}
+      options: --cpus 2 --add-host=host.docker.internal:host-gateway
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup doko-js-cli
+        id: setup-doko
+        uses: sealance-io/setup-doko-js-action@v0.1.0
+        with:
+          doko-repo: 'sealance-io/doko-js'
+          doko-branch: 'fixes_to_dokojs'
+        
+      - name: Verify dokojs is installed
+        run: |
+          dokojs --version
+          dokojs --help
+      - name: Display installed version
+        run: echo "Installed version is ${{ steps.setup-doko.outputs.version }}"

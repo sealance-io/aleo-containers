@@ -1,0 +1,97 @@
+services:
+  validator0:
+    image: aleohq/snarkos:latest
+    container_name: validator0
+    entrypoint: ["/aleo/bin/snarkos"]
+    command: [
+      "start", "--nodisplay", "--bft", "0.0.0.0:5000", "--node", "0.0.0.0:4130", "--network", "1", "--dev", "0",
+      "--dev-num-validators", "4", "--validator", "--allow-external-peers", 
+      "--peers", "172.20.0.3:4130,172.20.0.4:4130,172.20.0.5:4130,172.20.0.6:4130",
+      "--validators", "172.20.0.3:5000,172.20.0.4:5000,172.20.0.5:5000",
+      "--norest"
+    ]
+    networks:
+      aleo-devnet:
+        ipv4_address: 172.20.0.2
+        aliases:
+          - validator0
+
+  validator1:
+    image: aleohq/snarkos:latest
+    container_name: validator1
+    entrypoint: ["/aleo/bin/snarkos"]
+    command: [
+      "start", "--nodisplay", "--bft", "0.0.0.0:5000", "--node", "0.0.0.0:4130", "--network", "1", "--dev", "1",
+      "--dev-num-validators", "4", "--validator", "--allow-external-peers",
+      "--peers", "172.20.0.2:4130,172.20.0.4:4130,172.20.0.5:4130,172.20.0.6:4130",
+      "--validators", "172.20.0.2:5000,172.20.0.4:5000,172.20.0.5:5000",
+      "--norest"
+    ]
+    networks:
+      aleo-devnet:
+        ipv4_address: 172.20.0.3
+        aliases:
+          - validator1
+
+  validator2:
+    image: aleohq/snarkos:latest
+    container_name: validator2
+    entrypoint: ["/aleo/bin/snarkos"]
+    command: [
+      "start", "--nodisplay", "--bft", "0.0.0.0:5000", "--node", "0.0.0.0:4130", "--network", "1", "--dev", "2",
+      "--dev-num-validators", "4", "--validator", "--allow-external-peers",
+      "--peers", "172.20.0.2:4130,172.20.0.3:4130,172.20.0.5:4130,172.20.0.6:4130",
+      "--validators", "172.20.0.2:5000,172.20.0.3:5000,172.20.0.5:5000",
+      "--norest"
+    ]
+    networks:
+      aleo-devnet:
+        ipv4_address: 172.20.0.4
+        aliases:
+          - validator2
+
+  validator3:
+    image: aleohq/snarkos:latest
+    container_name: validator3
+    entrypoint: ["/aleo/bin/snarkos"]
+    command: [
+      "start", "--nodisplay", "--bft", "0.0.0.0:5000", "--node", "0.0.0.0:4130", "--network", "1", "--dev", "3",
+      "--dev-num-validators", "4", "--validator", "--allow-external-peers",
+      "--peers", "172.20.0.2:4130,172.20.0.3:4130,172.20.0.4:4130,172.20.0.6:4130",
+      "--validators", "172.20.0.2:5000,172.20.0.3:5000,172.20.0.4:5000",
+      "--norest"
+    ]
+    networks:
+      aleo-devnet:
+        ipv4_address: 172.20.0.5
+        aliases:
+          - validator3
+
+  client:
+    image: aleohq/snarkos:latest
+    container_name: client
+    entrypoint: ["/aleo/bin/snarkos"]
+    command: [
+      "start", "--client", "--nodisplay", "--node", "0.0.0.0:4130", "--network", "1", "--dev", "4",
+      "--dev-num-validators", "4", "--allow-external-peers",
+      "--peers", "172.20.0.2:4130,172.20.0.3:4130,172.20.0.4:4130,172.20.0.5:4130", "--rest", "0.0.0.0:3030"
+    ]
+    networks:
+      aleo-devnet:
+        ipv4_address: 172.20.0.6
+        aliases:
+          - client
+    depends_on:
+      - validator0
+      - validator1
+      - validator2
+      - validator3
+    ports:
+      - "3030:3030"   # Exposes the REST API port.
+
+networks:
+  aleo-devnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
