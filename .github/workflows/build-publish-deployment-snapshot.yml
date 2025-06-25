@@ -24,7 +24,7 @@ jobs:
       
       - name: Setup doko-js-cli
         id: setup-doko
-        uses: sealance-io/setup-doko-js-action@v0.1.0
+        uses: sealance-io/setup-doko-js-action@v0.1.4
         with:
           doko-repo: 'sealance-io/doko-js'
           doko-branch: 'fixes_to_dokojs'
