@@ -1,0 +1,662 @@
+#!/bin/bash
+
+# Multi-platform container build script with deployment artifact generation
+# Supports macOS/Linux with docker/podman
+# Builds for both amd64 and arm64 architectures and creates manifest lists
+# Validated with shellcheck
+
+# Enable strict mode
+set -euo pipefail
+IFS=$'\n\t'
+
+# Color codes for better output readability
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_step() {
+    echo -e "${BLUE}[BUILD]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Function to show usage
+usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  -c, --commit <sha/branch/tag>    Git commit SHA, branch, or tag to clone (default: main)"
+    echo "  -v, --version <version>          Version tag for amareleo-chain image (default: v2.4.1)"
+    echo "  --skip-push                      Build images but skip pushing to registry (for testing)"
+    echo "  -h, --help                       Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0                               # Use defaults (main branch, v2.4.1)"
+    echo "  $0 -c develop -v v2.4.0          # Use develop branch and v2.4.0 image"
+    echo "  $0 --commit abc1234 --version latest"
+    echo "  $0 --skip-push                   # Build locally without pushing"
+    echo ""
+    echo "Notes:"
+    echo "  - Requires either podman or docker installed and running"
+    echo "  - With docker and --skip-push, only current platform is built (buildx limitation)"
+    echo "  - For local multi-platform builds, use podman"
+    exit 1
+}
+
+# Parse command line arguments
+GIT_REF="main"
+AMARELEO_VERSION="v2.4.1"
+SKIP_PUSH=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -c|--commit)
+            GIT_REF="$2"
+            shift 2
+            ;;
+        -v|--version)
+            AMARELEO_VERSION="$2"
+            shift 2
+            ;;
+        --skip-push)
+            SKIP_PUSH=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            print_error "Unknown option: $1"
+            usage
+            ;;
+    esac
+done
+
+print_step "Configuration:"
+echo "  Git ref: ${GIT_REF}"
+echo "  Amareleo version: ${AMARELEO_VERSION}"
+echo "  Clone method: SSH"
+echo "  Skip push: ${SKIP_PUSH}"
+echo "  Dockerfile: Will be generated dynamically"
+echo ""
+
+# Constants (after argument parsing since they use AMARELEO_VERSION)
+REPO_URL="git@github.com:sealance-io/compliant-transfer-aleo.git"
+REPO_URL_HTTPS="https://github.com/sealance-io/compliant-transfer-aleo"
+CLONE_DIR="compliant-transfer-aleo-build"
+CONTAINER_NAME="devnet-${RANDOM}"
+VOLUME_NAME="amareleo_state_volume_${RANDOM}"
+AMARELEO_IMAGE="ghcr.io/sealance-io/amareleo-chain:${AMARELEO_VERSION}"
+BUILDER_NAME=""
+
+# Detect container tool (prefer podman over docker)
+print_step "Detecting container build tool..."
+CONTAINER_TOOL=""
+if hash podman 2>/dev/null; then
+    CONTAINER_TOOL="podman"
+    print_success "Found podman - using podman for builds"
+elif hash docker 2>/dev/null; then
+    CONTAINER_TOOL="docker"
+    print_success "Found docker - using docker for builds"
+    if [[ "$SKIP_PUSH" == "true" ]]; then
+        print_warning "Note: Docker buildx with --skip-push will only build for current platform"
+        print_warning "Use podman for local multi-platform builds"
+    fi
+else
+    print_error "Neither podman nor docker found in PATH. Please install either podman or docker."
+    exit 1
+fi
+
+# Check if container tool is functional
+print_step "Checking if ${CONTAINER_TOOL} is functional..."
+if ! ${CONTAINER_TOOL} version &> /dev/null; then
+    print_error "${CONTAINER_TOOL} is not functioning properly."
+    
+    if [[ "$CONTAINER_TOOL" == "podman" ]] && [[ "$OSTYPE" == "darwin"* ]]; then
+        print_warning "On macOS, ensure podman machine is started: podman machine start"
+    elif [[ "$CONTAINER_TOOL" == "docker" ]] && [[ "$OSTYPE" == "darwin"* ]]; then
+        print_warning "On macOS, ensure Docker Desktop is running"
+    else
+        print_warning "Check your ${CONTAINER_TOOL} installation and ensure the service is running."
+    fi
+    exit 1
+fi
+print_success "${CONTAINER_TOOL} is functional."
+
+# Check if npm is available
+print_step "Checking for npm..."
+if ! command -v npm &> /dev/null; then
+    print_error "npm is not installed. Please install Node.js and npm."
+    exit 1
+fi
+print_success "npm is available."
+CONTAINER_NAME="devnet-${RANDOM}"
+VOLUME_NAME="amareleo_state_volume_${RANDOM}"
+AMARELEO_IMAGE="ghcr.io/sealance-io/amareleo-chain:${AMARELEO_VERSION}"
+# Variables
+BUILDER_NAME=""
+
+# Cleanup function
+cleanup() {
+    local exit_code=$?
+    
+    if [[ $exit_code -ne 0 ]]; then
+        print_warning "Script failed. Performing cleanup..."
+    fi
+    
+    # Stop and remove container if it exists
+    if ${CONTAINER_TOOL} ps -a --format "{{.Names}}" | grep -q "^${CONTAINER_NAME}$"; then
+        print_step "Cleaning up container ${CONTAINER_NAME}..."
+        ${CONTAINER_TOOL} stop --time=10 "${CONTAINER_NAME}" &> /dev/null || true
+        ${CONTAINER_TOOL} rm "${CONTAINER_NAME}" &> /dev/null || true
+    fi
+    
+    # Remove volume if it exists and we're in a failure state
+    if [[ $exit_code -ne 0 ]] && ${CONTAINER_TOOL} volume ls -q | grep -q "^${VOLUME_NAME}$"; then
+        print_step "Cleaning up volume ${VOLUME_NAME}..."
+        ${CONTAINER_TOOL} volume rm "${VOLUME_NAME}" &> /dev/null || true
+    fi
+    
+    # Remove generated Dockerfile on failure
+    if [[ $exit_code -ne 0 ]] && [[ -f "Dockerfile" ]] && [[ -d "${CLONE_DIR}" ]]; then
+        print_step "Cleaning up generated Dockerfile..."
+        rm -f Dockerfile
+    fi
+    
+    # Remove clone directory on failure
+    if [[ $exit_code -ne 0 ]] && [[ -d "${CLONE_DIR}" ]]; then
+        print_step "Cleaning up clone directory..."
+        rm -rf "${CLONE_DIR}"
+    fi
+    
+    # Clean up docker buildx builder if we created one
+    if [[ -n "${BUILDER_NAME:-}" ]] && [[ "$CONTAINER_TOOL" == "docker" ]]; then
+        docker buildx rm "${BUILDER_NAME}" &> /dev/null || true
+    fi
+}
+
+# Set trap for cleanup
+trap cleanup EXIT
+
+# Step 1: Clone repository
+print_step "Cloning repository ${REPO_URL} (ref: ${GIT_REF})..."
+if [[ -d "${CLONE_DIR}" ]]; then
+    print_warning "Directory ${CLONE_DIR} already exists. Removing..."
+    rm -rf "${CLONE_DIR}"
+fi
+
+# Check SSH connectivity first
+if ! ssh -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
+    print_warning "SSH authentication to GitHub may not be configured."
+    print_warning "Ensure you have SSH keys set up for GitHub access."
+    print_warning "See: https://docs.github.com/en/authentication/connecting-to-github-with-ssh"
+fi
+
+git clone --depth 1 --branch "${GIT_REF}" "${REPO_URL}" "${CLONE_DIR}" 2>/dev/null || {
+    # If branch clone fails, try as a commit/tag
+    git clone "${REPO_URL}" "${CLONE_DIR}" || {
+        print_error "Failed to clone repository. Ensure you have SSH access to GitHub."
+        exit 1
+    }
+    cd "${CLONE_DIR}"
+    git checkout "${GIT_REF}"
+    cd ..
+}
+print_success "Repository cloned successfully."
+
+# Change to cloned directory
+cd "${CLONE_DIR}"
+
+cp ".env.example" ".env"
+
+# Check and use nvm if available and .nvmrc exists
+# Note: nvm is typically a shell function, not a command, so we check differently
+if [ -f ".nvmrc" ]; then
+    print_step "Found .nvmrc file, checking for nvm..."
+    
+    # Try to load nvm from common locations
+    if [ -s "$HOME/.nvm/nvm.sh" ]; then
+        print_step "Loading nvm from ~/.nvm/nvm.sh..."
+        # shellcheck disable=SC1091
+        source "$HOME/.nvm/nvm.sh"
+    elif [ -s "/usr/local/opt/nvm/nvm.sh" ]; then
+        print_step "Loading nvm from /usr/local/opt/nvm/nvm.sh..."
+        # shellcheck disable=SC1091
+        source "/usr/local/opt/nvm/nvm.sh"
+    fi
+    
+    # Check if nvm is now available as a function
+    if type nvm &> /dev/null; then
+        print_step "Switching to Node.js version specified in .nvmrc..."
+        nvm use
+        print_success "Node.js version switched to: $(node --version)"
+    else
+        print_warning ".nvmrc file found but nvm could not be loaded."
+        print_warning "Using system Node.js version: $(node --version)"
+    fi
+else
+    print_step "No .nvmrc file found, using system Node.js version: $(node --version)"
+fi
+
+# Verify npm is still available after potential version switch
+if ! command -v npm &> /dev/null; then
+    print_error "npm is not available after Node.js version switch."
+    exit 1
+fi
+
+# Display npm version for debugging
+print_step "Using npm version: $(npm --version)"
+
+# Step 2: Pull amareleo-chain image
+print_step "Pulling image ${AMARELEO_IMAGE}..."
+${CONTAINER_TOOL} pull "${AMARELEO_IMAGE}"
+print_success "Image pulled successfully."
+
+# Step 3: Create volume and run container
+print_step "Creating volume ${VOLUME_NAME}..."
+${CONTAINER_TOOL} volume create "${VOLUME_NAME}"
+print_success "Volume created."
+
+print_step "Starting container ${CONTAINER_NAME}..."
+if ! ${CONTAINER_TOOL} run -d \
+    -p 3030:3030 \
+    -v "${VOLUME_NAME}:/data/amareleo" \
+    --name "${CONTAINER_NAME}" \
+    "${AMARELEO_IMAGE}"; then
+    print_error "Failed to start container. Port 3030 might be in use or image issue."
+    exit 1
+fi
+print_success "Container started."
+
+# Wait for container to be ready
+print_step "Starting container and waiting for initialization..."
+sleep 5
+
+# Verify container is running
+if ! ${CONTAINER_TOOL} ps --format "{{.Names}}" | grep -q "^${CONTAINER_NAME}$"; then
+    print_error "Container ${CONTAINER_NAME} is not running."
+    ${CONTAINER_TOOL} logs "${CONTAINER_NAME}" 2>&1 || true
+    exit 1
+fi
+print_success "Container is running."
+
+# Give container extra time to fully initialize
+print_step "Waiting for container services to initialize..."
+sleep 5
+
+# Check if we can connect to the container
+print_step "Checking container connectivity on port 3030..."
+RETRY_COUNT=0
+MAX_RETRIES=10
+while ! nc -z localhost 3030 2>/dev/null && [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    print_warning "Waiting for container to be ready on port 3030... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
+    sleep 2
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+done
+
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    print_error "Container is not responding on port 3030 after ${MAX_RETRIES} attempts."
+    print_warning "Container logs:"
+    ${CONTAINER_TOOL} logs "${CONTAINER_NAME}" || true
+    exit 1
+fi
+print_success "Container is ready and responding on port 3030."
+
+# Step 4: Install dependencies and run deployment
+print_step "Installing npm dependencies..."
+if ! npm ci --ignore-scripts; then
+    print_error "Failed to install npm dependencies."
+    exit 1
+fi
+print_success "Dependencies installed."
+print_step "Running post-install scripts..."
+if ! npm run postinstall; then
+    print_error "Failed to execute post-install script."
+    exit 1
+fi
+
+# Check if dokojs is available globally
+if ! command -v dokojs &> /dev/null; then
+    print_warning "dokojs command not found in PATH."
+    print_warning "The compile step might fail if dokojs is not installed."
+    print_warning "Please ensure dokojs is installed globally via npm."
+fi
+
+print_step "Compiling project (rimraf artifacts && dokojs compile)..."
+if ! npm run compile; then
+    print_error "Compilation failed. Check if dokojs is properly installed."
+    exit 1
+fi
+print_success "Project compiled."
+
+print_step "Running deployment to devnet..."
+if ! npm run deploy:devnet; then
+    print_error "Deployment failed. Check the container logs for details."
+    exit 1
+fi
+print_success "Deployment completed."
+
+# Step 5: Gracefully stop container
+print_step "Stopping container ${CONTAINER_NAME} gracefully..."
+${CONTAINER_TOOL} stop --time=30 "${CONTAINER_NAME}"
+print_success "Container stopped."
+
+# Additional wait to ensure everything is flushed
+print_step "Waiting for complete shutdown..."
+sleep 30
+
+# Step 6: Copy state from volume to host
+print_step "Creating amareleo directory..."
+mkdir -p "$(pwd)/amareleo"
+
+print_step "Copying state from volume to host..."
+${CONTAINER_TOOL} run --rm \
+    -v "${VOLUME_NAME}:/data/amareleo" \
+    -v "$(pwd)/amareleo:/backup" \
+    alpine sh -c "cp -r /data/amareleo/. /backup/"
+print_success "State copied to ./amareleo"
+
+# Step 7: Cleanup container (volume is kept for now)
+print_step "Removing container ${CONTAINER_NAME}..."
+${CONTAINER_TOOL} rm "${CONTAINER_NAME}"
+print_success "Container removed."
+
+# Remove the volume as we've extracted the data
+print_step "Removing volume ${VOLUME_NAME}..."
+${CONTAINER_TOOL} volume rm "${VOLUME_NAME}"
+print_success "Volume removed."
+
+print_step "Starting multi-platform container build process..."
+
+# Generate Dockerfile
+print_step "Generating Dockerfile..."
+cat > Dockerfile << EOF
+# syntax=docker/dockerfile:1.2
+
+ARG AMARELEO_VERSION=${AMARELEO_VERSION}
+ARG GIT_COMMIT=""
+ARG BUILD_DATE=""
+ARG REPO_URL=""
+
+FROM ghcr.io/sealance-io/amareleo-chain:\${AMARELEO_VERSION}
+
+# OCI standard labels
+LABEL org.opencontainers.image.created="\${BUILD_DATE}"
+LABEL org.opencontainers.image.authors="Sealance.io"
+LABEL org.opencontainers.image.url="\${REPO_URL}"
+LABEL org.opencontainers.image.source="\${REPO_URL}"
+LABEL org.opencontainers.image.version="\${AMARELEO_VERSION}"
+LABEL org.opencontainers.image.revision="\${GIT_COMMIT}"
+LABEL org.opencontainers.image.title="Amareleo Chain Custom"
+LABEL org.opencontainers.image.description="Amareleo Chain node with sealance-io programs deployment"
+#LABEL org.opencontainers.image.documentation="https://docs.sealance.io"
+LABEL org.opencontainers.image.base.name="ghcr.io/sealance-io/amareleo-chain:\${AMARELEO_VERSION}"
+
+COPY --chown=amareleo:amareleo ./amareleo /data/amareleo
+
+# Set the entrypoint to run the node
+ENTRYPOINT ["amareleo-chain", "start"]
+
+# Provide default arguments that can be overridden
+CMD ["--network", "1", "--verbosity", "1", "--rest", "0.0.0.0:3030", "--rest-rps", "100", "--storage", "/data/amareleo", "--keep-state"]
+EOF
+print_success "Dockerfile generated."
+
+# Display generated Dockerfile
+print_step "Generated Dockerfile content:"
+echo "----------------------------------------"
+cat Dockerfile
+echo "----------------------------------------"
+echo ""
+
+# Validate remaining prerequisites
+print_step "Validating build prerequisites..."
+
+# Check if ./amareleo directory exists and has content
+if [ ! -d "./amareleo" ]; then
+    print_error "./amareleo directory not found. This should have been created by the deployment process."
+    exit 1
+fi
+
+# Check if amareleo has actual blockchain state files
+if [ -z "$(find ./amareleo -name "*.json" -o -name "*.db" -o -name "*.log" 2>/dev/null | head -1)" ]; then
+    print_warning "./amareleo directory exists but appears to lack expected blockchain state files."
+    print_warning "Deployment may not have fully completed. Continuing anyway..."
+fi
+
+if [ -z "$(ls -A ./amareleo)" ]; then
+    print_error "./amareleo directory is empty. Deployment may have failed."
+    exit 1
+fi
+
+# Check if buildx is available for docker (required for multi-platform builds)
+if [[ "$CONTAINER_TOOL" == "docker" ]]; then
+    print_step "Checking docker buildx availability..."
+    if ! docker buildx version &> /dev/null; then
+        print_error "Docker buildx is not available. Multi-platform builds require buildx."
+        print_warning "Install buildx or use Docker Desktop which includes it by default."
+        print_warning "On Linux, you can install buildx with:"
+        print_warning "  docker run --rm --privileged multiarch/qemu-user-static --reset -p yes"
+        print_warning "  docker buildx create --use --name multibuilder"
+        exit 1
+    fi
+    
+    # Check if a builder is available
+    if ! docker buildx ls | grep -q "default.*running"; then
+        print_step "Setting up docker buildx builder..."
+        # Create and use a buildx builder instance
+        BUILDER_NAME="multiplatform-builder-$"
+        docker buildx create --name "${BUILDER_NAME}" --use &> /dev/null || true
+        docker buildx inspect --bootstrap &> /dev/null
+        print_success "Docker buildx builder ready."
+    else
+        print_success "Docker buildx is available and ready."
+    fi
+fi
+
+print_success "All build prerequisites validated."
+
+# Generate build metadata from git
+print_step "Generating build metadata..."
+SHORT_SHA=$(git rev-parse --short=8 HEAD)
+GIT_COMMIT=$(git rev-parse HEAD)
+BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+# Container image configuration
+IMAGE_NAME="ghcr.io/sealance-io/amareleo-chain-custom"
+VERSION_TAG="${AMARELEO_VERSION}-${SHORT_SHA}"
+LATEST_TAG="latest"
+
+# Display build information
+echo ""
+print_step "Build Configuration:"
+echo "  Build Tool: ${CONTAINER_TOOL}"
+echo "  Repository: ${REPO_URL_HTTPS}"
+echo "  Git Commit: ${GIT_COMMIT}"
+echo "  Short SHA: ${SHORT_SHA}"
+echo "  Build Date: ${BUILD_DATE}"
+echo "  Image Name: ${IMAGE_NAME}"
+echo "  Version Tag: ${VERSION_TAG}"
+echo "  Latest Tag: ${LATEST_TAG}"
+echo ""
+
+# Show files that will be copied (including hidden files)
+print_step "Files in ./amareleo directory (including hidden files):"
+ls -la ./amareleo
+echo ""
+
+# Function to build and push multi-platform images
+build_multiplatform() {
+    local tag=$1
+    
+    if [[ "$CONTAINER_TOOL" == "podman" ]]; then
+        # Podman approach: build separately and create manifest
+        
+        # Clean up any existing manifest lists that might conflict
+        print_step "Cleaning up existing manifests..."
+        podman manifest rm "${IMAGE_NAME}:${tag}" 2>/dev/null || true
+        
+        # Build for AMD64 architecture
+        print_step "Building container image for linux/amd64..."
+        podman build \
+          --platform linux/amd64 \
+          --build-arg GIT_COMMIT="${GIT_COMMIT}" \
+          --build-arg BUILD_DATE="${BUILD_DATE}" \
+          --build-arg REPO_URL="${REPO_URL_HTTPS}" \
+          --tag "${IMAGE_NAME}:${tag}-amd64" \
+          .
+        print_success "AMD64 build completed."
+        
+        # Build for ARM64 architecture  
+        print_step "Building container image for linux/arm64..."
+        podman build \
+          --platform linux/arm64 \
+          --build-arg GIT_COMMIT="${GIT_COMMIT}" \
+          --build-arg BUILD_DATE="${BUILD_DATE}" \
+          --build-arg REPO_URL="${REPO_URL_HTTPS}" \
+          --tag "${IMAGE_NAME}:${tag}-arm64" \
+          .
+        print_success "ARM64 build completed."
+        
+        # Push individual architecture-specific images
+        if [[ "$SKIP_PUSH" == "false" ]]; then
+            print_step "Pushing AMD64 image to registry..."
+            podman push "${IMAGE_NAME}:${tag}-amd64"
+            print_success "AMD64 image pushed."
+            
+            print_step "Pushing ARM64 image to registry..."
+            podman push "${IMAGE_NAME}:${tag}-arm64"
+            print_success "ARM64 image pushed."
+        else
+            print_warning "Skipping push of architecture-specific images (--skip-push was specified)"
+        fi
+        
+        # Create and push manifest list
+        print_step "Creating manifest list for ${tag}..."
+        podman manifest create "${IMAGE_NAME}:${tag}"
+        podman manifest add "${IMAGE_NAME}:${tag}" "${IMAGE_NAME}:${tag}-amd64"
+        podman manifest add "${IMAGE_NAME}:${tag}" "${IMAGE_NAME}:${tag}-arm64"
+        
+        if [[ "$SKIP_PUSH" == "false" ]]; then
+            print_step "Pushing manifest list for ${tag}..."
+            podman manifest push "${IMAGE_NAME}:${tag}"
+            print_success "Manifest list for ${tag} pushed."
+        else
+            print_warning "Skipping push of manifest list (--skip-push was specified)"
+            print_success "Manifest list for ${tag} created locally."
+        fi
+        
+    else
+        # Docker buildx approach: build and push in one command
+        if [[ "$SKIP_PUSH" == "false" ]]; then
+            print_step "Building and pushing multi-platform image for ${tag}..."
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --build-arg GIT_COMMIT="${GIT_COMMIT}" \
+              --build-arg BUILD_DATE="${BUILD_DATE}" \
+              --build-arg REPO_URL="${REPO_URL_HTTPS}" \
+              --tag "${IMAGE_NAME}:${tag}" \
+              --push \
+              .
+            print_success "Multi-platform image for ${tag} built and pushed."
+        else
+            # When skipping push with Docker, we can only build for the current platform
+            print_step "Building image for ${tag} (current platform only)..."
+            print_warning "Docker buildx limitation: Cannot load multi-platform images locally"
+            print_warning "Building for current platform only. Use podman for local multi-platform builds."
+            
+            # Detect current platform
+            CURRENT_PLATFORM=""
+            if [[ "$(uname -m)" == "x86_64" ]]; then
+                CURRENT_PLATFORM="linux/amd64"
+            elif [[ "$(uname -m)" == "arm64" ]] || [[ "$(uname -m)" == "aarch64" ]]; then
+                CURRENT_PLATFORM="linux/arm64"
+            else
+                print_error "Unsupported platform: $(uname -m)"
+                exit 1
+            fi
+            
+            print_step "Building for ${CURRENT_PLATFORM}..."
+            docker buildx build \
+              --platform "${CURRENT_PLATFORM}" \
+              --build-arg GIT_COMMIT="${GIT_COMMIT}" \
+              --build-arg BUILD_DATE="${BUILD_DATE}" \
+              --build-arg REPO_URL="${REPO_URL_HTTPS}" \
+              --tag "${IMAGE_NAME}:${tag}" \
+              --load \
+              .
+            print_success "Image for ${tag} built locally (${CURRENT_PLATFORM})."
+        fi
+    fi
+}
+
+# Build and push version-tagged image
+print_step "Starting multi-platform build for version ${VERSION_TAG}..."
+build_multiplatform "${VERSION_TAG}"
+
+# Build and push latest-tagged image
+print_step "Starting multi-platform build for latest tag..."
+build_multiplatform "${LATEST_TAG}"
+
+# Cleanup docker buildx builder if we created one
+if [[ "$CONTAINER_TOOL" == "docker" ]] && [[ -n "${BUILDER_NAME}" ]]; then
+    print_step "Cleaning up docker buildx builder..."
+    docker buildx rm "${BUILDER_NAME}" &> /dev/null || true
+fi
+
+# Final summary
+echo ""
+print_success "Complete build and deployment process finished successfully!"
+echo ""
+echo "Deployment artifacts were generated from:"
+echo "  📦 Repository: ${REPO_URL_HTTPS} (${GIT_REF})"
+echo "  📦 Base image: ${AMARELEO_IMAGE}"
+echo ""
+if [[ "$SKIP_PUSH" == "false" ]]; then
+    echo "Your custom container images are now available at:"
+    echo "  📦 ${IMAGE_NAME}:${VERSION_TAG} (multi-arch)"
+    echo "  📦 ${IMAGE_NAME}:${LATEST_TAG} (multi-arch)"
+else
+    echo "Your custom container images were built locally:"
+    if [[ "$CONTAINER_TOOL" == "docker" ]]; then
+        echo "  📦 ${IMAGE_NAME}:${VERSION_TAG} (current platform only)"
+        echo "  📦 ${IMAGE_NAME}:${LATEST_TAG} (current platform only)"
+        echo ""
+        echo "Note: Docker buildx limitation - only current platform was built locally"
+        echo "For local multi-platform builds, use podman instead"
+    else
+        echo "  📦 ${IMAGE_NAME}:${VERSION_TAG} (multi-arch)"
+        echo "  📦 ${IMAGE_NAME}:${LATEST_TAG} (multi-arch)"
+    fi
+    echo ""
+    echo "Note: Images were NOT pushed to registry (--skip-push was used)"
+fi
+echo ""
+if [[ "$SKIP_PUSH" == "false" ]] || [[ "$CONTAINER_TOOL" == "podman" ]]; then
+    echo "Each multi-arch image includes:"
+    echo "  🏗️  linux/amd64 (x86_64)"
+    echo "  🏗️  linux/arm64 (Apple Silicon, ARM servers)"
+    echo ""
+fi
+if [[ "$SKIP_PUSH" == "false" ]]; then
+    echo "You can pull and run these images on any compatible platform:"
+    echo "  ${CONTAINER_TOOL} pull ${IMAGE_NAME}:${VERSION_TAG}"
+    echo "  ${CONTAINER_TOOL} pull ${IMAGE_NAME}:${LATEST_TAG}"
+else
+    echo "You can run these images locally with:"
+    echo "  ${CONTAINER_TOOL} run ${IMAGE_NAME}:${VERSION_TAG}"
+    echo "  ${CONTAINER_TOOL} run ${IMAGE_NAME}:${LATEST_TAG}"
+fi
