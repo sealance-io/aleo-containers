@@ -19,24 +19,24 @@ All images are multi-architecture, supporting AMD64 and ARM64 platforms.
 Pre-built images are available on GitHub Container Registry:
 
 #### Leo Lang
-- **Standard**: `ghcr.io/sealance-io/leo-lang:v2.5.0`
-- **CI**: `ghcr.io/sealance-io/leo-lang-ci:v2.5.0`
+- **Standard**: `ghcr.io/sealance-io/leo-lang:v2.7.1`
+- **CI**: `ghcr.io/sealance-io/leo-lang-ci:v2.7.1`
 
 #### Amareleo Chain
-- **Standard**: `ghcr.io/sealance-io/amareleo-chain:v2.3.0`
+- **Standard**: `ghcr.io/sealance-io/amareleo-chain:v2.5.0`
 
 You can also use the `latest` tag to always get the most recent version.
 
 ### Image Contents
 
 #### Leo Lang Standard Image (`leo-lang`)
-- Leo CLI v2.5.0
+- Leo CLI v2.7.1
 - Node.js v22
 - Debian Bookworm (slim)
 - Essential SSL libraries
 
 #### Leo Lang CI Image (`leo-lang-ci`)
-- Leo CLI v2.5.0
+- Leo CLI v2.7.1
 - Full Rust toolchain (v1.85.1)
 - Node.js v22
 - Git + Git LFS
@@ -47,7 +47,7 @@ You can also use the `latest` tag to always get the most recent version.
 - GitHub Actions workspace setup
 
 #### Amareleo Chain Standard Image (`amareleo-chain`)
-- Amareleo Chain v2.2.0
+- Amareleo Chain v2.5.0
 - Debian Bookworm (slim)
 - Essential SSL libraries
 - Running as non-root user
@@ -60,16 +60,16 @@ Perfect for development, deployment, and running Leo applications:
 
 ```bash
 # Run the Leo CLI directly
-docker run --rm ghcr.io/sealance-io/leo-lang:v2.5.0 leo --help
+docker run --rm ghcr.io/sealance-io/leo-lang:v2.7.1 leo --help
 
 # Check installed versions
-docker run --rm ghcr.io/sealance-io/leo-lang:v2.5.0
+docker run --rm ghcr.io/sealance-io/leo-lang:v2.7.1
 
 # Mount your project directory and work with Leo
-docker run --rm -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v2.5.0 leo build
+docker run --rm -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v2.7.1 leo build
 
 # Start a shell in the container
-docker run --rm -it -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v2.5.0 /bin/bash
+docker run --rm -it -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v2.7.1 /bin/bash
 ```
 
 ### Leo Lang CI Image
@@ -222,13 +222,13 @@ The build process can be customized using environment variables:
 
 ```bash
 # Override Leo version
-LEO_VERSION="v2.4.0" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
+LEO_VERSION="v2.7.1" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 
 # Override Leo repository URL
 LEO_REPO="https://github.com/your-fork/leo" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 
 # Override Amareleo version
-AMARELEO_VERSION="v2.0.0" ./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain
+AMARELEO_VERSION="v2.5.0" ./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain
 
 # Override Amareleo repository URL
 AMARELEO_REPO="https://github.com/your-fork/amareleo-chain" ./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain
@@ -246,7 +246,7 @@ REGISTRY="docker.io" ./build-publish-image.sh --dockerfile leo.Dockerfile --imag
 IMAGE_NAME="custom-leo" ./build-publish-image.sh --dockerfile leo.Dockerfile
 
 # Multiple overrides at once
-LEO_VERSION="v2.4.0" LEO_REPO="https://github.com/your-fork/leo" NODE_VERSION=18 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
+LEO_VERSION="v2.7.1" LEO_REPO="https://github.com/your-fork/leo" NODE_VERSION=18 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 ```
 
 ## 🛠️ Script Features
