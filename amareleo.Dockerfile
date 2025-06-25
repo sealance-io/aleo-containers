@@ -33,7 +33,7 @@ ARG RUST_VERSION
 RUN rustup toolchain install ${RUST_VERSION} --force && rustup default ${RUST_VERSION}
 
 # Compile with optimizations
-RUN cargo +${RUST_VERSION} install --path .
+RUN cargo +${RUST_VERSION} install --locked --path .
 
 # Stage 2: Create final minimal image
 FROM debian:${DEBIAN_RELEASE}-slim
