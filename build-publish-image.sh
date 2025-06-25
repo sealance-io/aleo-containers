@@ -195,7 +195,7 @@ done
 
 # Set project-specific version variables based on image name
 if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
-  PROJECT_VERSION=${LEO_VERSION:-"v2.5.0"}
+  PROJECT_VERSION=${LEO_VERSION:-"v2.7.1"}
   PROJECT_VERSION_ARG="LEO_VERSION"
   PROJECT_REPO=${LEO_REPO:-"https://github.com/ProvableHQ/leo"}
   PROJECT_REPO_ARG="LEO_REPO"
@@ -207,7 +207,7 @@ elif [[ "$IMAGE_NAME" == "amareleo-chain" ]]; then
     exit 1
   fi
   
-  PROJECT_VERSION=${AMARELEO_VERSION:-"v2.2.0"}
+  PROJECT_VERSION=${AMARELEO_VERSION:-"v2.5.0"}
   PROJECT_VERSION_ARG="AMARELEO_VERSION"
   PROJECT_REPO=${AMARELEO_REPO:-"https://github.com/kaxxa123/amareleo-chain"}
   PROJECT_REPO_ARG="AMARELEO_REPO"
