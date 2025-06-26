@@ -108,6 +108,11 @@ on:
         default: 'bookworm'
         type: string
 
+# Permissions required by callers
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   determine-params:
     runs-on: ubuntu-latest
@@ -189,7 +194,7 @@ jobs:
           build-args: |
             ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
             ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
-            NODE_VERSION=${{ inputs.node_version }}
+            NODE_VERSION=${{ inputs.node_version || '22' }}
             DEBIAN_RELEASE=${{ inputs.debian_release }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -254,7 +259,7 @@ jobs:
           build-args: |
             ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
             ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
-            NODE_VERSION=${{ inputs.node_version }}
+            NODE_VERSION=${{ inputs.node_version || '22' }}
             DEBIAN_RELEASE=${{ inputs.debian_release }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
