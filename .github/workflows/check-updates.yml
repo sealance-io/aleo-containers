@@ -22,8 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: read
-      actions: write
+      packages: write
     
     steps:
       - name: Checkout code
