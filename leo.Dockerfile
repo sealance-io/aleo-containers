@@ -54,19 +54,42 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --chmod=755 download-provers.sh /tmp/
+# Create group and non-root user 'leo' with home directory
+# Using a higher UID to avoid conflicts with existing users
+RUN groupadd -g 1001 leo && \
+    useradd -m -s /bin/bash -u 1001 -g leo leo
+
+# Create .aleo directory with proper permissions for leo user
+RUN mkdir -p /.aleo && chown -R leo:leo /.aleo
+
+# Copy download-provers.sh and set ownership
+COPY --chmod=755 --chown=leo:leo download-provers.sh /tmp/
+
+# Switch to leo user before running the script
+USER leo
+
+# Run the download-provers script as leo user
 RUN /tmp/download-provers.sh
 
 # Set appropriate workdir
 WORKDIR /app
 
+# Ensure /app directory is owned by leo user
+USER root
+RUN chown -R leo:leo /app
+USER leo
+
 # Add version verification script
+USER root
 RUN echo '#!/bin/sh' > /usr/local/bin/check-versions \
     && echo 'echo "Installed tools:"' >> /usr/local/bin/check-versions \
     && echo 'echo "- Leo: $(leo --version)"' >> /usr/local/bin/check-versions \
     && echo 'echo "- Node.js: $(node --version)"' >> /usr/local/bin/check-versions \
     && echo 'echo "- NPM: $(npm --version)"' >> /usr/local/bin/check-versions \
     && chmod +x /usr/local/bin/check-versions
+
+# Switch back to leo user
+USER leo
 
 # Default command to show installed versions
 CMD ["check-versions"]
