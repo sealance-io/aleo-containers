@@ -232,7 +232,7 @@ jobs:
         with:
           registry: ${{ inputs.registry }}
           username: ${{ github.actor }}
-          password: ${{ secrets.registry_token }}
+          password: ${{ github.event_name == 'workflow_dispatch' && secrets.GITHUB_TOKEN || secrets.registry_token }}
 
       - name: Prepare Image Tags
         id: prep
