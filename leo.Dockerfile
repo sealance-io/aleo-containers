@@ -62,25 +62,11 @@ RUN groupadd -g 1001 leo && \
 # Create .aleo directory with proper permissions for leo user
 RUN mkdir -p /.aleo && chown -R leo:leo /.aleo
 
-# Copy download-provers.sh and set ownership
-COPY --chmod=755 --chown=leo:leo download-provers.sh /tmp/
-
-# Switch to leo user before running the script
-USER leo
-
-# Run the download-provers script as leo user
-RUN /tmp/download-provers.sh
-
-# Set appropriate workdir
+# Set appropriate workdir and ensure proper ownership
 WORKDIR /app
-
-# Ensure /app directory is owned by leo user
-USER root
 RUN chown -R leo:leo /app
-USER leo
 
 # Add version verification script
-USER root
 RUN echo '#!/bin/sh' > /usr/local/bin/check-versions \
     && echo 'echo "Installed tools:"' >> /usr/local/bin/check-versions \
     && echo 'echo "- Leo: $(leo --version)"' >> /usr/local/bin/check-versions \
@@ -88,8 +74,14 @@ RUN echo '#!/bin/sh' > /usr/local/bin/check-versions \
     && echo 'echo "- NPM: $(npm --version)"' >> /usr/local/bin/check-versions \
     && chmod +x /usr/local/bin/check-versions
 
-# Switch back to leo user
+# Copy download-provers.sh and set ownership
+COPY --chmod=755 --chown=leo:leo download-provers.sh /tmp/
+
+# Switch to leo user for all remaining operations
 USER leo
+
+# Run the download-provers script as leo user
+RUN /tmp/download-provers.sh
 
 # Default command to show installed versions
 CMD ["check-versions"]
