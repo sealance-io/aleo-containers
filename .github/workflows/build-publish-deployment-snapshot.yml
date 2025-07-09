@@ -1,16 +1,73 @@
 name: Create amareleo deployment snapshot
 
 on:
+  workflow_call:
+    inputs:
+      git-ref:
+        description: 'Git commit SHA, branch, or tag to clone'
+        required: false
+        default: 'main'
+        type: string
+      amareleo-version:
+        description: 'Version tag for amareleo-chain base image'
+        required: false
+        default: 'v2.5.0'
+        type: string
+      image-name:
+        description: 'Custom image name (without registry)'
+        required: false
+        default: 'amareleo-chain-custom'
+        type: string
+      push-latest:
+        description: 'Also tag and push as latest'
+        required: false
+        default: true
+        type: boolean
+    secrets:
+      registry_token:
+        description: 'Token for container registry authentication'
+        required: true
+  
   workflow_dispatch:
+    inputs:
+      git-ref:
+        description: 'Git commit SHA, branch, or tag to clone'
+        required: false
+        default: 'main'
+        type: string
+      amareleo-version:
+        description: 'Version tag for amareleo-chain base image'
+        required: false
+        default: 'v2.5.0'
+        type: string
+      image-name:
+        description: 'Custom image name (without registry)'
+        required: false
+        default: 'amareleo-chain-custom'
+        type: string
+      push-latest:
+        description: 'Also tag and push as latest'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  DOCKER_BUILDKIT: 1 # enable docker buildkit
+  DOCKER_HOST: "unix:///var/run/docker.sock"
+  TESTNET_ENDPOINT: "http://host.docker.internal:3030"
 
 jobs:
   create-deployment-snapshot-image:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash 
     permissions:
       contents: read
-      packages: read
+      packages: write
       actions: read
-    timeout-minutes: 60
+    timeout-minutes: 180
     container:
       image: ghcr.io/sealance-io/leo-lang-ci:v3.1.0
       credentials:
@@ -21,7 +78,38 @@ jobs:
         - /var/run/docker.sock:/var/run/docker.sock
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.event_name == 'workflow_dispatch' && secrets.GITHUB_TOKEN || secrets.registry_token }}
+
+      - name: Clone target repository
+        run: |
+          echo "Cloning repository with ref: ${{ inputs.git-ref }}"
+          git clone --depth 1 --branch "${{ inputs.git-ref }}" \
+            https://github.com/sealance-io/compliant-transfer-aleo.git \
+            compliant-transfer-aleo-build 2>/dev/null || {
+            # If branch clone fails, try as a commit/tag
+            git clone https://github.com/sealance-io/compliant-transfer-aleo.git \
+              compliant-transfer-aleo-build
+            cd compliant-transfer-aleo-build
+            git checkout "${{ inputs.git-ref }}"
+            cd ..
+          }
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: 'compliant-transfer-aleo-build/.nvmrc'
+          cache-dependency-path: compliant-transfer-aleo-build/package-lock.json
+          cache: 'npm'
+
       - name: Setup doko-js-cli
         id: setup-doko
         uses: sealance-io/setup-doko-js-action@v0.1.4
@@ -35,3 +123,156 @@ jobs:
           dokojs --help
       - name: Display installed version
         run: echo "Installed version is ${{ steps.setup-doko.outputs.version }}"
+      
+      - name: Prepare deployment environment
+        working-directory: compliant-transfer-aleo-build
+        run: |
+          # Copy environment file
+          cp .env.example .env
+          
+          # Install dependencies
+          npm ci --ignore-scripts
+
+          # Apply package patches
+          npm run postinstall
+      
+          # Compile leo programs
+          npm run compile
+
+      - name: Create data directory
+        shell: bash
+        working-directory: compliant-transfer-aleo-build
+        run: |
+          set -euo pipefail
+          mkdir -p amareleo
+
+      - name: Bootstrap Amareleo devnet
+        working-directory: compliant-transfer-aleo-build
+        run: |
+          docker pull ghcr.io/sealance-io/amareleo-chain:${{ inputs.amareleo-version }}
+          docker run -d \
+            --name devnet \
+            -p 3030:3030 \
+            -v amareleo:/data/amareleo \
+            ghcr.io/sealance-io/amareleo-chain:${{ inputs.amareleo-version }}
+
+      - name: Wait for devnet port to open
+        run: |
+          HOST=host.docker.internal
+          PORT=3030
+          TIMEOUT=3
+          RETRY_INTERVAL=2
+
+          echo "[BUILD] Waiting for ${HOST}:${PORT}…"
+          while ! timeout "${TIMEOUT}" bash -c "</dev/tcp/${HOST}/${PORT}" >/dev/null 2>&1; do    # require `bash` shell  [oai_citation:7‡DEV Community](https://dev.to/pwd9000/github-actions-all-the-shells-581h?utm_source=chatgpt.com)
+            echo "[BUILD] Port ${PORT} not yet open—retrying in ${RETRY_INTERVAL}s…"
+            docker ps;
+            sleep "${RETRY_INTERVAL}"
+          done
+
+          echo "[SUCCESS] ${HOST}:${PORT} is now open"
+
+      - name: Run deployment and extract state
+        working-directory: compliant-transfer-aleo-build
+        run: |
+          # Deploy programs to local devnet
+          npm run deploy:devnet
+
+      - name: Teardown devnet container
+        if: always()
+        run: |
+          docker stop devnet
+      
+      - name: Generate Dockerfile
+        working-directory: compliant-transfer-aleo-build
+        run: |
+          cat > Dockerfile << 'EOF'
+          # syntax=docker/dockerfile:1.4
+          ARG AMARELEO_VERSION=${{ inputs.amareleo-version }}
+          FROM ghcr.io/sealance-io/amareleo-chain:${AMARELEO_VERSION}
+          
+          # Metadata
+          LABEL org.opencontainers.image.source="https://github.com/sealance-io/compliant-transfer-aleo"
+          LABEL org.opencontainers.image.description="Amareleo Chain node with pre-deployed contracts"
+          LABEL org.opencontainers.image.authors="Sealance.io"
+          
+          # Copy blockchain state with deployed contracts
+          COPY --chown=amareleo:amareleo ./amareleo /data/amareleo
+          
+          # Ensure proper permissions
+          USER amareleo
+          
+          # Entrypoint from base image
+          ENTRYPOINT ["amareleo-chain", "start"]
+          CMD ["--network", "1", "--verbosity", "1", "--rest", "0.0.0.0:3030", "--rest-rps", "100", "--storage", "/data/amareleo", "--keep-state"]
+          EOF
+      
+      - name: Extract metadata
+        id: meta
+        working-directory: compliant-transfer-aleo-build
+        run: |
+          # Get git commit info
+          SHORT_SHA=$(git rev-parse --short=8 HEAD)
+          FULL_SHA=$(git rev-parse HEAD)
+          
+          # Generate version tag
+          VERSION_TAG="${{ inputs.amareleo-version }}-${SHORT_SHA}"
+          
+          # Set outputs
+          echo "short-sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "full-sha=${FULL_SHA}" >> $GITHUB_OUTPUT
+          echo "version-tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
+          echo "image-name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ inputs.image-name }}" >> $GITHUB_OUTPUT
+      
+      - name: Build and push multi-platform image
+        uses: docker/build-push-action@v5
+        with:
+          context: compliant-transfer-aleo-build
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}
+            ${{ inputs.push-latest == 'true' && format('{0}:latest', steps.meta.outputs.image-name) || '' }}
+          build-args: |
+            AMARELEO_VERSION=${{ inputs.amareleo-version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.title=Amareleo Chain Custom
+            org.opencontainers.image.description=Amareleo Chain with pre-deployed contracts
+            org.opencontainers.image.source=https://github.com/sealance-io/compliant-transfer-aleo
+            org.opencontainers.image.version=${{ steps.meta.outputs.version-tag }}
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+            org.opencontainers.image.revision=${{ steps.meta.outputs.full-sha }}
+            org.opencontainers.image.base.name=ghcr.io/sealance-io/amareleo-chain:${{ inputs.amareleo-version }}
+      
+      - name: Generate summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          # Build Summary
+          
+          ## 🚀 Custom Amareleo Chain Image Built Successfully!
+          
+          ### Build Information
+          - **Triggered by**: ${{ github.event_name == 'workflow_dispatch' && 'Manual dispatch' || 'Workflow call' }}
+          - **Actor**: @${{ github.actor }}
+          
+          ### Image Details
+          - **Base Version**: \`${{ inputs.amareleo-version }}\`
+          - **Git Reference**: \`${{ inputs.git-ref }}\`
+          - **Git SHA**: \`${{ steps.meta.outputs.full-sha }}\`
+          
+          ### Published Images
+          - \`${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}\`
+          ${{ inputs.push-latest == 'true' && format('- `{0}:latest`', steps.meta.outputs.image-name) || '' }}
+          
+          ### Platforms
+          - ✅ linux/amd64 (x86_64)
+          - ✅ linux/arm64 (ARM64/Apple Silicon)
+          
+          ### Usage
+          \`\`\`bash
+          docker pull ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}
+          docker run -p 3030:3030 ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}
+          \`\`\`
+          EOF
