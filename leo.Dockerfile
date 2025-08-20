@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=22
 ARG DEBIAN_RELEASE=bookworm
-ARG RUST_VERSION=1.85.1
+ARG RUST_VERSION=1.88.0
 
 # Stage 1: Build leo-lang from source
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as builder
