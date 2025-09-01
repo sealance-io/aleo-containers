@@ -13,13 +13,14 @@ cd "$DEST_DIR"
 # List of files to download
 FILES=(
   "powers-of-beta-16.usrs.84631bc"
-  "shifted-powers-of-beta-16.usrs.d99bcb3"
   "powers-of-beta-17.usrs.7c27308"
   "shifted-powers-of-beta-17.usrs.2025178"
   "powers-of-beta-18.usrs.7a12bcb"
   "shifted-powers-of-beta-18.usrs.9a1859e"
   "powers-of-beta-19.usrs.e535d44"
   "shifted-powers-of-beta-19.usrs.662e343"
+  "powers-of-beta-20.usrs.3daad5e"
+  "shifted-powers-of-beta-20.usrs.dbb509d"
 )
 
 # Create a temporary directory to track download status
