@@ -4,11 +4,13 @@ This repository provides Docker images for Aleo blockchain tooling:
 
 - **Leo Lang Images**: The Leo programming language CLI tool designed for building and running zero-knowledge applications
 - **Amareleo Chain Images**: The Amareleo blockchain node implementation
+- **Aleo Devnet Image**: Integrated development environment with Leo v3 and snarkOS for running local test networks
 
-Each image is available in two variants:
+Image variants available:
 
 - **Standard Image**: Contains the core CLI tools with necessary runtime dependencies
-- **CI Image**: Extended version with additional tools for CI/CD pipelines and GitHub Actions workflows
+- **CI Image**: Extended version with additional tools for CI/CD pipelines and GitHub Actions workflows (Leo Lang only)
+- **Devnet Image**: Combined Leo and snarkOS for local blockchain development
 
 All images are multi-architecture, supporting AMD64 and ARM64 platforms.
 
@@ -24,6 +26,9 @@ Pre-built images are available on GitHub Container Registry:
 
 #### Amareleo Chain
 - **Standard**: `ghcr.io/sealance-io/amareleo-chain:v2.5.0`
+
+#### Aleo Devnet
+- **Integrated**: `ghcr.io/sealance-io/aleo-devnet:v3.1.0-v4.1.0`
 
 You can also use the `latest` tag to always get the most recent version.
 
@@ -51,6 +56,14 @@ You can also use the `latest` tag to always get the most recent version.
 - Debian Bookworm (slim)
 - Essential SSL libraries
 - Running as non-root user
+
+#### Aleo Devnet Image (`aleo-devnet`)
+- Leo CLI v3.1.0 (with devnet patch for non-interactive mode)
+- snarkOS v4.1.0
+- Pre-downloaded mainnet prover parameters (~2GB)
+- Debian Bookworm (slim)
+- Essential runtime libraries
+- Configured for local development
 
 ## 🚀 Usage
 
@@ -106,13 +119,43 @@ For running an Amareleo blockchain node:
 # Run node with default settings
 docker run -d -p 3030:3030 -p 9000:9000 \
   -v $(pwd)/data:/data/amareleo \
-  ghcr.io/sealance-io/amareleo-chain:v2.3.0
+  ghcr.io/sealance-io/amareleo-chain:v2.5.0
 
 # Run with custom parameters
 docker run -d -p 3030:3030 -p 9000:9000 \
   -v $(pwd)/data:/data/amareleo \
-  ghcr.io/sealance-io/amareleo-chain:v2.3.0 \
-  amareleo-chain start --network 2 --verbosity 2 --rest 0.0.0.0:3030
+  ghcr.io/sealance-io/amareleo-chain:v2.5.0 \
+  start --network 2 --verbosity 2 --rest 0.0.0.0:3030
+```
+
+### Aleo Devnet Image
+
+For running a local Aleo development network with Leo v3 and snarkOS:
+
+```bash
+# Run a minimal devnet (4 validators + 1 client)
+docker run -it --rm -p 3030:3030 -p 4130:4130 \
+  -v $(pwd)/data:/data \
+  ghcr.io/sealance-io/aleo-devnet:v3.1.0-v4.1.0
+
+# Run with custom devnet parameters
+docker run -it --rm -p 3030:3030 -p 4130:4130 \
+  -v $(pwd)/data:/data \
+  ghcr.io/sealance-io/aleo-devnet:v3.1.0-v4.1.0 \
+  devnet --storage /data --clear-storage --yes \
+  --verbosity 4 --num-validators 4 --num-clients 2
+
+# Run snarkOS directly instead of Leo devnet command
+docker run -it --rm -p 3030:3030 -p 4130:4130 \
+  --entrypoint ./snarkos \
+  ghcr.io/sealance-io/aleo-devnet:v3.1.0-v4.1.0 \
+  start --client --nodisplay --node 0.0.0.0:4130 \
+  --network 1 --dev 0 --rest 0.0.0.0:3030
+
+# Access Leo CLI for development
+docker run -it --rm -v $(pwd):/app -w /app \
+  ghcr.io/sealance-io/aleo-devnet:v3.1.0-v4.1.0 \
+  new my_project
 ```
 #### GitHub Actions Example
 
@@ -150,6 +193,9 @@ The project consists of the following files:
 ├── build-publish-image.sh    # Build script for creating and publishing images
 ├── leo.Dockerfile            # Multi-stage Dockerfile for Leo Lang
 ├── amareleo.Dockerfile       # Multi-stage Dockerfile for Amareleo Chain
+├── aleo-devnet.Dockerfile    # Multi-stage Dockerfile for Aleo Devnet (Leo + snarkOS)
+├── docker-compose.yaml       # Docker Compose setup for local testnet
+├── download-provers.sh       # Script to download Aleo prover parameters
 └── README.md                 # This documentation file
 ```
 
@@ -164,6 +210,33 @@ The build script automatically:
 This repository includes automated workflows for building and publishing images.
 
 For detailed information about the CI/CD workflows, please see the [CI/CD documentation](./docs/CI.md).
+
+## 🌐 Docker Compose Local Testnet
+
+The `docker-compose.yaml` file sets up a local Aleo testnet with:
+- 4 validator nodes (validator0-3)
+- 1 client node with REST API
+- Fixed IP addressing for consistent peer connections
+- REST API exposed on port 3030
+
+To run the local testnet:
+
+```bash
+# Start the testnet
+docker-compose up -d
+
+# Check status
+docker-compose ps
+
+# View logs
+docker-compose logs -f validator0
+
+# Access REST API
+curl http://localhost:3030/testnet3/latest/height
+
+# Stop the testnet
+docker-compose down
+```
 
 ## 🔧 Building Images Locally
 
@@ -191,6 +264,9 @@ cat ~/.github/token | docker login ghcr.io --username USERNAME --password-stdin
 
 # Build standard Amareleo Chain image
 ./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain
+
+# Build Aleo Devnet image (Leo v3 + snarkOS)
+./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 
 # Build without tagging as latest
 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --both --no-latest
@@ -232,6 +308,12 @@ AMARELEO_VERSION="v2.5.0" ./build-publish-image.sh --dockerfile amareleo.Dockerf
 
 # Override Amareleo repository URL
 AMARELEO_REPO="https://github.com/your-fork/amareleo-chain" ./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain
+
+# Override Aleo Devnet versions (Leo and snarkOS)
+LEO_VERSION="v3.1.0" SNARKOS_VERSION="v4.1.0" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
+
+# Override Rust version for Aleo Devnet
+RUST_VERSION="1.88.0" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 
 # Override Node.js version (Leo Lang only)
 NODE_VERSION=18 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang

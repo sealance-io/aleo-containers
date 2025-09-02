@@ -26,6 +26,8 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /build
 RUN git clone --branch ${LEO_VERSION} --depth 1 \
     https://github.com/ProvableHQ/leo.git
+# Force rust to use external Git instead of the internal libgit wrapper
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
 WORKDIR /build/leo
 
@@ -53,7 +55,9 @@ RUN apt-get update && apt-get install -y \
     clang \
     cmake \
     curl \
-    gcc \
+	clang \
+	gcc \
+    lld \
     libssl-dev \
     libcurl4-openssl-dev \
     llvm \
@@ -66,6 +70,8 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /build
 RUN git clone --branch ${SNARKOS_VERSION} --depth 1 \
     https://github.com/ProvableHQ/snarkOS.git
+# Force rust to use external Git instead of the internal libgit wrapper
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
 WORKDIR /build/snarkOS
 
