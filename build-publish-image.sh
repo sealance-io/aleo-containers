@@ -211,6 +211,22 @@ elif [[ "$IMAGE_NAME" == "amareleo-chain" ]]; then
   PROJECT_VERSION_ARG="AMARELEO_VERSION"
   PROJECT_REPO=${AMARELEO_REPO:-"https://github.com/kaxxa123/amareleo-chain"}
   PROJECT_REPO_ARG="AMARELEO_REPO"
+elif [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
+  # Aleo-devnet doesn't support CI image
+  if [[ "$BUILD_CI" == "true" ]]; then
+    echo "Error: CI image is not available for aleo-devnet"
+    echo "Use --standard instead of --ci or --both"
+    exit 1
+  fi
+  
+  # Aleo-devnet uses both LEO and SNARKOS versions
+  LEO_VERSION=${LEO_VERSION:-"v3.1.0"}
+  SNARKOS_VERSION=${SNARKOS_VERSION:-"v4.1.0"}
+  PROJECT_VERSION="${LEO_VERSION}-${SNARKOS_VERSION}"
+  # For aleo-devnet, we'll pass both versions as build args
+  PROJECT_VERSION_ARG="LEO_VERSION"
+  PROJECT_REPO=""  # Not applicable for aleo-devnet
+  PROJECT_REPO_ARG=""
 else
   echo "Error: Unknown image name: $IMAGE_NAME"
   echo "Please specify a supported image name with --image-name"
@@ -219,7 +235,9 @@ fi
 
 echo "Building for $IMAGE_NAME with $DOCKERFILE"
 echo "Version: $PROJECT_VERSION"
-echo "Repository: $PROJECT_REPO"
+if [[ -n "$PROJECT_REPO" ]]; then
+  echo "Repository: $PROJECT_REPO"
+fi
 
 # Check registry credentials if we're pushing
 check_registry_credentials
@@ -243,11 +261,24 @@ build_and_push() {
   echo "Push to registry: $([ "$PUSH_IMAGES" == "true" ] && echo "Yes" || echo "No")"
 
   # Common build arguments for both podman and docker
-  local common_build_args=(
-    "--build-arg" "${PROJECT_VERSION_ARG}=${PROJECT_VERSION}"
-    "--build-arg" "${PROJECT_REPO_ARG}=${PROJECT_REPO}"
-    "--build-arg" "DEBIAN_RELEASE=${DEBIAN_RELEASE}"
-  )
+  local common_build_args=()
+  
+  # Handle build args based on image type
+  if [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
+    # Aleo-devnet needs both LEO_VERSION and SNARKOS_VERSION
+    common_build_args+=(
+      "--build-arg" "LEO_VERSION=${LEO_VERSION}"
+      "--build-arg" "SNARKOS_VERSION=${SNARKOS_VERSION}"
+      "--build-arg" "RUST_VERSION=${RUST_VERSION:-1.88.0}"
+    )
+  else
+    # Standard images use PROJECT_VERSION_ARG and PROJECT_REPO_ARG
+    common_build_args+=("--build-arg" "${PROJECT_VERSION_ARG}=${PROJECT_VERSION}")
+    if [[ -n "$PROJECT_REPO_ARG" ]]; then
+      common_build_args+=("--build-arg" "${PROJECT_REPO_ARG}=${PROJECT_REPO}")
+    fi
+    common_build_args+=("--build-arg" "DEBIAN_RELEASE=${DEBIAN_RELEASE}")
+  fi
   
   # Add NODE_VERSION arg only for leo-lang image
   if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
