@@ -7,7 +7,7 @@ ARG RUST_VERSION=1.88.0
 # Stage 1: Build leo-lang from source
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as builder
 
-ARG LEO_VERSION=v2.7.1
+ARG LEO_VERSION=v3.2.0
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
 # Force rust to use external Git instead of the internal libgit wrapper
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
@@ -81,7 +81,7 @@ COPY --chmod=755 --chown=leo:leo download-provers.sh /tmp/
 USER leo
 
 # Run the download-provers script as leo user
-RUN /tmp/download-provers.sh
+RUN DEST_DIR="/.aleo/resources/" /tmp/download-provers.sh
 
 # Default command to show installed versions
 CMD ["check-versions"]
@@ -146,8 +146,9 @@ RUN echo "export DOCKER_BUILDKIT=1" >> /etc/profile \
 RUN mkdir -p /github/workspace
 ENV WORKDIR=/github/workspace
 
+RUN mkdir -p /root/.aleo
 COPY --chmod=755 download-provers.sh /tmp/
-RUN /tmp/download-provers.sh
+RUN DEST_DIR="/root/.aleo/resources/" /tmp/download-provers.sh
 
 # Set appropriate workdir
 WORKDIR /app

@@ -21,27 +21,27 @@ All images are multi-architecture, supporting AMD64 and ARM64 platforms.
 Pre-built images are available on GitHub Container Registry:
 
 #### Leo Lang
-- **Standard**: `ghcr.io/sealance-io/leo-lang:v2.7.1`
-- **CI**: `ghcr.io/sealance-io/leo-lang-ci:v2.7.1`
+- **Standard**: `ghcr.io/sealance-io/leo-lang:v3.2.0`
+- **CI**: `ghcr.io/sealance-io/leo-lang-ci:v3.2.0`
 
 #### Amareleo Chain
 - **Standard**: `ghcr.io/sealance-io/amareleo-chain:v2.5.0`
 
 #### Aleo Devnet
-- **Integrated**: `ghcr.io/sealance-io/aleo-devnet:v3.1.0-v4.1.0`
+- **Integrated**: `ghcr.io/sealance-io/aleo-devnet:v3.2.0-v4.2.2`
 
 You can also use the `latest` tag to always get the most recent version.
 
 ### Image Contents
 
 #### Leo Lang Standard Image (`leo-lang`)
-- Leo CLI v2.7.1
+- Leo CLI v3.2.0
 - Node.js v22
 - Debian Bookworm (slim)
 - Essential SSL libraries
 
 #### Leo Lang CI Image (`leo-lang-ci`)
-- Leo CLI v2.7.1
+- Leo CLI v3.2.0
 - Full Rust toolchain (v1.85.1)
 - Node.js v22
 - Git + Git LFS
@@ -58,8 +58,8 @@ You can also use the `latest` tag to always get the most recent version.
 - Running as non-root user
 
 #### Aleo Devnet Image (`aleo-devnet`)
-- Leo CLI v3.1.0 (with devnet patch for non-interactive mode)
-- snarkOS v4.1.0
+- Leo CLI v3.2.0 (with devnet patch for non-interactive mode)
+- snarkOS v4.2.2
 - Pre-downloaded mainnet prover parameters (~2GB)
 - Debian Bookworm (slim)
 - Essential runtime libraries
@@ -73,16 +73,16 @@ Perfect for development, deployment, and running Leo applications:
 
 ```bash
 # Run the Leo CLI directly
-docker run --rm ghcr.io/sealance-io/leo-lang:v2.7.1 leo --help
+docker run --rm ghcr.io/sealance-io/leo-lang:v3.2.0 leo --help
 
 # Check installed versions
-docker run --rm ghcr.io/sealance-io/leo-lang:v2.7.1
+docker run --rm ghcr.io/sealance-io/leo-lang:v3.2.0
 
 # Mount your project directory and work with Leo
-docker run --rm -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v2.7.1 leo build
+docker run --rm -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v3.2.0 leo build
 
 # Start a shell in the container
-docker run --rm -it -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v2.7.1 /bin/bash
+docker run --rm -it -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v3.2.0 /bin/bash
 ```
 
 ### Leo Lang CI Image
@@ -136,25 +136,25 @@ For running a local Aleo development network with Leo v3 and snarkOS:
 # Run a minimal devnet (4 validators + 1 client)
 docker run -it --rm -p 3030:3030 -p 4130:4130 \
   -v $(pwd)/data:/data \
-  ghcr.io/sealance-io/aleo-devnet:v3.1.0-v4.1.0
+  ghcr.io/sealance-io/aleo-devnet:v3.2.0-v4.2.2
 
 # Run with custom devnet parameters
 docker run -it --rm -p 3030:3030 -p 4130:4130 \
   -v $(pwd)/data:/data \
-  ghcr.io/sealance-io/aleo-devnet:v3.1.0-v4.1.0 \
+  ghcr.io/sealance-io/aleo-devnet:v3.2.0-v4.2.2 \
   devnet --storage /data --clear-storage --yes \
   --verbosity 4 --num-validators 4 --num-clients 2
 
 # Run snarkOS directly instead of Leo devnet command
 docker run -it --rm -p 3030:3030 -p 4130:4130 \
   --entrypoint ./snarkos \
-  ghcr.io/sealance-io/aleo-devnet:v3.1.0-v4.1.0 \
+  ghcr.io/sealance-io/aleo-devnet:v3.2.0-v4.2.2 \
   start --client --nodisplay --node 0.0.0.0:4130 \
   --network 1 --dev 0 --rest 0.0.0.0:3030
 
 # Access Leo CLI for development
 docker run -it --rm -v $(pwd):/app -w /app \
-  ghcr.io/sealance-io/aleo-devnet:v3.1.0-v4.1.0 \
+  ghcr.io/sealance-io/aleo-devnet:v3.2.0-v4.2.2 \
   new my_project
 ```
 #### GitHub Actions Example
@@ -298,7 +298,7 @@ The build process can be customized using environment variables:
 
 ```bash
 # Override Leo version
-LEO_VERSION="v2.7.1" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
+LEO_VERSION="v3.2.0" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 
 # Override Leo repository URL
 LEO_REPO="https://github.com/your-fork/leo" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
@@ -310,7 +310,7 @@ AMARELEO_VERSION="v2.5.0" ./build-publish-image.sh --dockerfile amareleo.Dockerf
 AMARELEO_REPO="https://github.com/your-fork/amareleo-chain" ./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain
 
 # Override Aleo Devnet versions (Leo and snarkOS)
-LEO_VERSION="v3.1.0" SNARKOS_VERSION="v4.1.0" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
+LEO_VERSION="v3.2.0" SNARKOS_VERSION="v4.2.2" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 
 # Override Rust version for Aleo Devnet
 RUST_VERSION="1.88.0" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
@@ -328,7 +328,7 @@ REGISTRY="docker.io" ./build-publish-image.sh --dockerfile leo.Dockerfile --imag
 IMAGE_NAME="custom-leo" ./build-publish-image.sh --dockerfile leo.Dockerfile
 
 # Multiple overrides at once
-LEO_VERSION="v2.7.1" LEO_REPO="https://github.com/your-fork/leo" NODE_VERSION=18 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
+LEO_VERSION="v3.2.0" LEO_REPO="https://github.com/your-fork/leo" NODE_VERSION=18 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 ```
 
 ## 🛠️ Script Features

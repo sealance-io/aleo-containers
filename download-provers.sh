@@ -2,7 +2,6 @@
 set -euo pipefail
 
 # Configuration
-DEST_DIR="/.aleo/resources/"
 BASE_URL="https://parameters.aleo.org/mainnet"
 MAX_PARALLEL=4  # Number of parallel downloads
 

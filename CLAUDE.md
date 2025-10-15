@@ -34,7 +34,7 @@ This repository provides Docker containerization for the Aleo blockchain ecosyst
 
 ```bash
 # Run Leo Lang CLI
-docker run --rm ghcr.io/sealance-io/leo-lang:v2.7.1 leo --help
+docker run --rm ghcr.io/sealance-io/leo-lang:v3.2.0 leo --help
 
 # Run Aleo devnet (Leo v3 + snarkOS)
 docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/data aleo-devnet
@@ -76,7 +76,7 @@ All Dockerfiles use multi-stage builds:
 
 3. **aleo-devnet.Dockerfile**:
    - Stage 1 (`leo-builder`): Builds Leo v3 with devnet patch
-   - Stage 2 (`snarkos-builder`): Builds snarkOS v4.1.0
+   - Stage 2 (`snarkos-builder`): Builds snarkOS v4.2.2
    - Stage 3 (final): Combined runtime with pre-downloaded provers
 
 ### Critical Implementation Details
@@ -87,8 +87,8 @@ All Dockerfiles use multi-stage builds:
 
 **Version Dependencies**:
 - Leo v3+ requires Rust 1.88.0 (updated from 1.85.1)
-- Leo v2.7.1 and earlier use Rust 1.85.1
-- snarkOS v4.1.0 requires specific build features: `default,snarkos-node-metrics,test_network`
+- Leo v3.2.0 and earlier use Rust 1.85.1
+- snarkOS v4.2.2 requires specific build features: `default,snarkos-node-metrics,test_network`
 
 **Docker Compose Network**: Uses fixed IP addressing (172.20.0.0/16) with:
 - validator0: 172.20.0.2 (verbose logging, REST disabled)
@@ -108,9 +108,9 @@ The `build-publish-image.sh` script:
 
 ```bash
 # Override versions
-LEO_VERSION="v2.7.1" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
+LEO_VERSION="v3.2.0" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 AMARELEO_VERSION="v2.5.0" ./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain
-LEO_VERSION="v3.1.0" SNARKOS_VERSION="v4.1.0" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
+LEO_VERSION="v3.2.0" SNARKOS_VERSION="v4.2.2" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 
 # Override repositories (for forks)
 LEO_REPO="https://github.com/your-fork/leo" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang

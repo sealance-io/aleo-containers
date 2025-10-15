@@ -3,8 +3,8 @@
 # Run: docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/data aleo-devnet
 
 # Build arguments
-ARG LEO_VERSION=v3.1.0
-ARG SNARKOS_VERSION=v4.1.0
+ARG LEO_VERSION=v3.2.0
+ARG SNARKOS_VERSION=v4.2.2
 ARG RUST_VERSION=1.88.0
 
 # Stage 1: Build Leo CLI
@@ -30,14 +30,6 @@ RUN git clone --branch ${LEO_VERSION} --depth 1 \
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
 WORKDIR /build/leo
-
-RUN sed -i \
-    's/if\s*!\s*confirm\s*(\s*"\\nProceed with devnet startup?"\s*,\s*false\s*)\s*?/if !confirm("\\nProceed with devnet startup?", self.yes)?/' \
-    leo/cli/commands/devnet/mod.rs && \
-    echo "Patched devnet/mod.rs to respect --yes flag" && \
-    # Verify the patch was applied by checking for the presence of self.yes
-    grep -q 'confirm.*self\.yes' leo/cli/commands/devnet/mod.rs && \
-    echo "Patch verified successfully" || (echo "Patch verification failed" && exit 1)
 
 # Build Leo in release mode with default features from repository
 RUN cargo build --release --locked && \
@@ -119,7 +111,7 @@ RUN mkdir -p /.aleo
 COPY download-provers.sh /tmp/
 
 # Run the download-provers script as leo user
-RUN /tmp/download-provers.sh
+RUN DEST_DIR="/.aleo/resources/" /tmp/download-provers.sh
 
 # Set environment variables for better devnet operation
 ENV RUST_LOG=info \
