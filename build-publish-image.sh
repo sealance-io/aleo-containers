@@ -195,7 +195,7 @@ done
 
 # Set project-specific version variables based on image name
 if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
-  PROJECT_VERSION=${LEO_VERSION:-"v2.7.1"}
+  PROJECT_VERSION=${LEO_VERSION:-"v3.2.0"}
   PROJECT_VERSION_ARG="LEO_VERSION"
   PROJECT_REPO=${LEO_REPO:-"https://github.com/ProvableHQ/leo"}
   PROJECT_REPO_ARG="LEO_REPO"
@@ -220,8 +220,8 @@ elif [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
   fi
   
   # Aleo-devnet uses both LEO and SNARKOS versions
-  LEO_VERSION=${LEO_VERSION:-"v3.1.0"}
-  SNARKOS_VERSION=${SNARKOS_VERSION:-"v4.1.0"}
+  LEO_VERSION=${LEO_VERSION:-"v3.2.0"}
+  SNARKOS_VERSION=${SNARKOS_VERSION:-"v4.2.2"}
   PROJECT_VERSION="${LEO_VERSION}-${SNARKOS_VERSION}"
   # For aleo-devnet, we'll pass both versions as build args
   PROJECT_VERSION_ARG="LEO_VERSION"
