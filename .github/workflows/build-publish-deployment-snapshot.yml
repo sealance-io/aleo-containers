@@ -23,6 +23,11 @@ on:
         required: false
         default: true
         type: boolean
+      skip-push:
+        description: 'Build images but skip pushing to registry'
+        required: false
+        default: false
+        type: boolean
     secrets:
       registry_token:
         description: 'Token for container registry authentication'
@@ -49,6 +54,11 @@ on:
         description: 'Also tag and push as latest'
         required: false
         default: true
+        type: boolean
+      skip-push:
+        description: 'Build images but skip pushing to registry'
+        required: false
+        default: false
         type: boolean
 
 env:
@@ -325,6 +335,7 @@ jobs:
           echo "image-name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ inputs.image-name }}" >> $GITHUB_OUTPUT
       
       - name: Build and push multi-platform image
+        if: ${{ !inputs.skip-push }}
         uses: docker/build-push-action@v5
         with:
           context: compliant-transfer-aleo-build
@@ -335,6 +346,27 @@ jobs:
             ${{ inputs.push-latest == 'true' && format('{0}:latest', steps.meta.outputs.image-name) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.title=Aleo Devnet Custom
+            org.opencontainers.image.description=Aleo devnet node with pre-deployed contracts
+            org.opencontainers.image.source=https://github.com/sealance-io/compliant-transfer-aleo
+            org.opencontainers.image.version=${{ steps.meta.outputs.version-tag }}
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+            org.opencontainers.image.revision=${{ steps.meta.outputs.full-sha }}
+            org.opencontainers.image.base.name=ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
+      
+      - name: Build multi-platform image (local only)
+        if: ${{ inputs.skip-push }}
+        uses: docker/build-push-action@v5
+        with:
+          context: compliant-transfer-aleo-build
+          platforms: linux/amd64
+          push: false
+          tags: |
+            ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=oci,dest=/tmp/image.tar
           labels: |
             org.opencontainers.image.title=Aleo Devnet Custom
             org.opencontainers.image.description=Aleo devnet node with pre-deployed contracts
@@ -361,9 +393,9 @@ jobs:
           - **Git Reference**: \`${{ inputs.git-ref }}\`
           - **Git SHA**: \`${{ steps.meta.outputs.full-sha }}\`
           
-          ### Published Images
+          ### ${{ inputs.skip-push && 'Built Images (not pushed)' || 'Published Images' }}
           - \`${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}\`
-          ${{ inputs.push-latest == 'true' && format('- `{0}:latest`', steps.meta.outputs.image-name) || '' }}
+          ${{ inputs.push-latest == 'true' && !inputs.skip-push && format('- `{0}:latest`', steps.meta.outputs.image-name) || '' }}
           
           ### Platforms
           - ✅ linux/amd64 (x86_64)
@@ -371,7 +403,8 @@ jobs:
           
           ### Usage
           \`\`\`bash
-          docker pull ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}
+          ${{ inputs.skip-push && '# Image built locally only (not pushed to registry)' || '' }}
+          ${{ !inputs.skip-push && format('docker pull {0}:{1}', steps.meta.outputs.image-name, steps.meta.outputs.version-tag) || '' }}
           docker run -p 3030:3030 ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}
           \`\`\`
           EOF
