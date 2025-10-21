@@ -287,6 +287,11 @@ cat ~/.github/token | docker login ghcr.io --username USERNAME --password-stdin
 # Local development build (single arch, no push)
 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --local-arch --no-push
 
+# Build with custom variant suffix
+./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --variant node24
+./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --ci --variant node24
+./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain --variant experimental
+
 # Get help
 ./build-publish-image.sh --help
 ```
@@ -331,6 +336,30 @@ If you encounter errors during pushing:
 3. Check that you're logged in to the registry with `docker login` or `podman login`
 
 ## 🏗️ Customizing the Build
+
+### Using the --variant flag
+
+The `--variant` flag allows you to add a suffix to version tags (not `latest`), useful for building specialized versions:
+
+```bash
+# Build Leo with Node.js 24
+NODE_VERSION=24 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --variant node24
+# Produces: leo-lang:v3.2.0-node24, leo-lang:latest
+
+# Build CI variant with Node.js 24
+NODE_VERSION=24 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --ci --variant node24
+# Produces: leo-lang-ci:v3.2.0-node24, leo-lang-ci:latest
+
+# Build experimental Amareleo
+./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain --variant experimental
+# Produces: amareleo-chain:v2.5.0-experimental, amareleo-chain:latest
+
+# Build with custom Rust version
+RUST_VERSION=1.89.0 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet --variant rust189
+# Produces: aleo-devnet:v3.2.0-v4.2.2-rust189, aleo-devnet:latest
+```
+
+### Using environment variables
 
 The build process can be customized using environment variables:
 
@@ -383,6 +412,7 @@ The build script includes several features to ensure robust and flexible builds:
 - **Smart version handling** for different project types
 - **Target-based building** using Docker multi-stage builds
 - **Repository customization** for building from forks or different sources
+- **Variant support** for building specialized versions with custom tag suffixes
 
 ## ⚠️ Compatibility Notes
 
