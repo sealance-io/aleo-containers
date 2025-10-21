@@ -282,6 +282,10 @@ jobs:
         working-directory: compliant-transfer-aleo-build
         run: |
           set -euo pipefail
+
+          ls -la .
+          ls -la ./devnet
+
           # Check if ./devnet directory exists and has content
           if [ ! -d "./devnet" ]; then
               echo "[ERROR] ./devnet directory not found. This should have been created by the deployment process."
