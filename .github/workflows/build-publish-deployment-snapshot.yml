@@ -194,7 +194,7 @@ jobs:
           cp .env.example .env
           
           # Install dependencies
-          npm ci --ignore-scripts
+          npm ci
 
           # Apply package patches
           npm run postinstall
