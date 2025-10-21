@@ -135,6 +135,13 @@ jobs:
       - name: Display installed version
         run: echo "Installed version is ${{ steps.setup-doko.outputs.version }}"
 
+      - name: Create data directory
+        shell: bash
+        working-directory: compliant-transfer-aleo-build
+        run: |
+          set -euo pipefail
+          mkdir -p devnet
+
       - name: Bootstrap aleo-devnet
         working-directory: compliant-transfer-aleo-build
         run: |
@@ -233,13 +240,6 @@ jobs:
             exit 1
           fi
 
-      - name: Create data directory
-        shell: bash
-        working-directory: compliant-transfer-aleo-build
-        run: |
-          set -euo pipefail
-          mkdir -p devnet
-
       - name: Run deployment and extract state
         working-directory: compliant-transfer-aleo-build
         run: |
@@ -263,7 +263,7 @@ jobs:
           echo "[BUILD] Copying state from volume to host..."
           docker run --rm \
             -v devnet:/aleo \
-            -v $(pwd)/compliant-transfer-aleo-build/devnet:/backup \
+            -v ./devnet:/backup \
             alpine sh -c "cp -r /aleo/. /backup/"
           echo "[SUCCESS] State copied to ./compliant-transfer-aleo-build/devnet"
       
@@ -294,6 +294,9 @@ jobs:
               echo "[ERROR] ./devnet directory is empty. Deployment may have failed."
               exit 1
           fi
+
+          echo "Files in ./devnet directory (including hidden files):"
+          ls -la ./devnet
       
       - name: Generate Dockerfile
         working-directory: compliant-transfer-aleo-build
