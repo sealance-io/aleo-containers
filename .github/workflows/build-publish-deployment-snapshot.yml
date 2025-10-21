@@ -147,10 +147,11 @@ jobs:
         run: |
           set -euo pipefail
           docker pull ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
+          docker volume create aleo_devnet_state_volume
           docker run -d \
             --name devnet \
             -p 3030:3030 \
-            -v devnet:/aleo \
+            -v aleo_devnet_state_volume:/aleo \
             ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
 
       - name: Wait for devnet port to open
@@ -262,7 +263,7 @@ jobs:
           set -euo pipefail
           echo "[BUILD] Copying state from volume to host..."
           docker run --rm \
-            -v devnet:/aleo \
+            -v aleo_devnet_state_volume:/aleo \
             -v ./devnet:/backup \
             alpine sh -c "cp -r /aleo/. /backup/"
           echo "[SUCCESS] State copied to ./compliant-transfer-aleo-build/devnet"
@@ -274,7 +275,7 @@ jobs:
           echo "[BUILD] Removing container devnet..."
           docker rm devnet || true
           echo "[BUILD] Removing volume devnet..."
-          docker volume rm devnet || true
+          docker volume rm aleo_devnet_state_volume || true
           echo "[SUCCESS] Container and volume removed."
 
       - name: Validate remaining prerequisites
@@ -282,9 +283,6 @@ jobs:
         working-directory: compliant-transfer-aleo-build
         run: |
           set -euo pipefail
-
-          ls -la .
-          ls -la ./devnet
 
           # Check if ./devnet directory exists and has content
           if [ ! -d "./devnet" ]; then
