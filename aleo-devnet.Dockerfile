@@ -123,8 +123,11 @@ ENV RUST_LOG=info \
 # 4180: Metrics (if enabled)
 EXPOSE 3030 4130 4180
 
-# Volume for persistent storage
+# Volume for logs
 VOLUME ["/data"]
+
+# Volume for persistent storage
+VOLUME ["/aleo"]
 
 # Default entrypoint is leo
 ENTRYPOINT ["/usr/local/bin/leo"]

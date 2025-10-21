@@ -39,13 +39,13 @@ usage() {
     echo ""
     echo "Options:"
     echo "  -c, --commit <sha/branch/tag>    Git commit SHA, branch, or tag to clone (default: main)"
-    echo "  -v, --version <version>          Version tag for amareleo-chain image (default: v2.4.1)"
+    echo "  -v, --version <version>          Version tag for aleo-devnet image (default: v3.2.0-v4.2.2)"
     echo "  --skip-push                      Build images but skip pushing to registry (for testing)"
     echo "  -h, --help                       Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0                               # Use defaults (main branch, v2.4.1)"
-    echo "  $0 -c develop -v v2.4.0          # Use develop branch and v2.4.0 image"
+    echo "  $0                               # Use defaults (main branch, v3.2.0-v4.2.2)"
+    echo "  $0 -c develop -v v3.2.0-v4.2.2   # Use develop branch and v3.2.0-v4.2.2 image"
     echo "  $0 --commit abc1234 --version latest"
     echo "  $0 --skip-push                   # Build locally without pushing"
     echo ""
@@ -58,7 +58,7 @@ usage() {
 
 # Parse command line arguments
 GIT_REF="main"
-AMARELEO_VERSION="v2.4.1"
+DEVNET_VERSION="v3.2.0-v4.2.2"
 SKIP_PUSH=false
 
 while [[ $# -gt 0 ]]; do
@@ -68,7 +68,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -v|--version)
-            AMARELEO_VERSION="$2"
+            DEVNET_VERSION="$2"
             shift 2
             ;;
         --skip-push)
@@ -87,19 +87,19 @@ done
 
 print_step "Configuration:"
 echo "  Git ref: ${GIT_REF}"
-echo "  Amareleo version: ${AMARELEO_VERSION}"
+echo "  Aleo Devnet version: ${DEVNET_VERSION}"
 echo "  Clone method: SSH"
 echo "  Skip push: ${SKIP_PUSH}"
 echo "  Dockerfile: Will be generated dynamically"
 echo ""
 
-# Constants (after argument parsing since they use AMARELEO_VERSION)
+# Constants (after argument parsing since they use DEVNET_VERSION)
 REPO_URL="git@github.com:sealance-io/compliant-transfer-aleo.git"
 REPO_URL_HTTPS="https://github.com/sealance-io/compliant-transfer-aleo"
 CLONE_DIR="compliant-transfer-aleo-build"
-CONTAINER_NAME="devnet-${RANDOM}"
-VOLUME_NAME="amareleo_state_volume_${RANDOM}"
-AMARELEO_IMAGE="ghcr.io/sealance-io/amareleo-chain:${AMARELEO_VERSION}"
+CONTAINER_NAME="aleo-devnet-${RANDOM}"
+VOLUME_NAME="aleo_devnet_state_volume_${RANDOM}"
+DEVNET_IMAGE="ghcr.io/sealance-io/aleo-devnet:${DEVNET_VERSION}"
 BUILDER_NAME=""
 
 # Detect container tool (prefer podman over docker)
@@ -143,9 +143,9 @@ if ! command -v npm &> /dev/null; then
     exit 1
 fi
 print_success "npm is available."
-CONTAINER_NAME="devnet-${RANDOM}"
-VOLUME_NAME="amareleo_state_volume_${RANDOM}"
-AMARELEO_IMAGE="ghcr.io/sealance-io/amareleo-chain:${AMARELEO_VERSION}"
+CONTAINER_NAME="aleo-devnet-${RANDOM}"
+VOLUME_NAME="aleo_devnet_state_volume_${RANDOM}"
+DEVNET_IMAGE="ghcr.io/sealance-io/aleo-devnet:${DEVNET_VERSION}"
 # Variables
 BUILDER_NAME=""
 
@@ -260,9 +260,9 @@ fi
 # Display npm version for debugging
 print_step "Using npm version: $(npm --version)"
 
-# Step 2: Pull amareleo-chain image
-print_step "Pulling image ${AMARELEO_IMAGE}..."
-${CONTAINER_TOOL} pull "${AMARELEO_IMAGE}"
+# Step 2: Pull aleo-devnet image
+print_step "Pulling image ${DEVNET_IMAGE}..."
+${CONTAINER_TOOL} pull "${DEVNET_IMAGE}"
 print_success "Image pulled successfully."
 
 # Step 3: Create volume and run container
@@ -273,9 +273,9 @@ print_success "Volume created."
 print_step "Starting container ${CONTAINER_NAME}..."
 if ! ${CONTAINER_TOOL} run -d \
     -p 3030:3030 \
-    -v "${VOLUME_NAME}:/data/amareleo" \
+    -v "${VOLUME_NAME}:/aleo" \
     --name "${CONTAINER_NAME}" \
-    "${AMARELEO_IMAGE}"; then
+    "${DEVNET_IMAGE}"; then
     print_error "Failed to start container. Port 3030 might be in use or image issue."
     exit 1
 fi
@@ -335,12 +335,59 @@ if ! command -v dokojs &> /dev/null; then
     print_warning "Please ensure dokojs is installed globally via npm."
 fi
 
+# Wait for "credits.aleo" to be available from devnet
+print_step "Waiting for credits.aleo program to be available..."
+RETRY_COUNT=0
+MAX_RETRIES=20
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if curl -s -o /dev/null -w "%{http_code}" "http://localhost:3030/testnet/program/credits.aleo" | grep -q "200"; then
+        print_success "credits.aleo program is available."
+        break
+    fi
+    print_warning "Waiting for credits.aleo... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
+    sleep 3
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+done
+
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    print_error "credits.aleo program not available after ${MAX_RETRIES} attempts."
+    print_warning "Container logs:"
+    ${CONTAINER_TOOL} logs "${CONTAINER_NAME}" --tail 50 || true
+    exit 1
+fi
+
 print_step "Compiling project (rimraf artifacts && dokojs compile)..."
 if ! npm run compile; then
     print_error "Compilation failed. Check if dokojs is properly installed."
     exit 1
 fi
 print_success "Project compiled."
+
+# Wait for devnet to reach target consensus version
+print_step "Waiting for devnet to reach consensus version >= 10..."
+RETRY_COUNT=0
+MAX_RETRIES=15
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    CONSENSUS_VERSION=$(curl -s "http://localhost:3030/testnet/consensus_version" 2>/dev/null || echo "")
+    if [ -n "$CONSENSUS_VERSION" ] && [ "$CONSENSUS_VERSION" -ge 10 ] 2>/dev/null; then
+        print_success "Devnet consensus version is $CONSENSUS_VERSION (>= 10)."
+        break
+    fi
+    if [ -z "$CONSENSUS_VERSION" ]; then
+        print_warning "Waiting for consensus version response... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
+    else
+        print_warning "Current consensus version: $CONSENSUS_VERSION, waiting for >= 10... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
+    fi
+    sleep 5
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+done
+
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    print_error "Devnet did not reach consensus version >= 10 after ${MAX_RETRIES} attempts."
+    print_warning "Container logs:"
+    ${CONTAINER_TOOL} logs "${CONTAINER_NAME}" --tail 50 || true
+    exit 1
+fi
 
 print_step "Running deployment to devnet..."
 if ! npm run deploy:devnet; then
@@ -359,15 +406,15 @@ print_step "Waiting for complete shutdown..."
 sleep 30
 
 # Step 6: Copy state from volume to host
-print_step "Creating amareleo directory..."
-mkdir -p "$(pwd)/amareleo"
+print_step "Creating devnet directory..."
+mkdir -p "$(pwd)/devnet"
 
 print_step "Copying state from volume to host..."
 ${CONTAINER_TOOL} run --rm \
-    -v "${VOLUME_NAME}:/data/amareleo" \
-    -v "$(pwd)/amareleo:/backup" \
-    alpine sh -c "cp -r /data/amareleo/. /backup/"
-print_success "State copied to ./amareleo"
+    -v "${VOLUME_NAME}:/aleo" \
+    -v "$(pwd)/devnet:/backup" \
+    alpine sh -c "cp -r /aleo/. /backup/"
+print_success "State copied to ./devnet"
 
 # Step 7: Cleanup container (volume is kept for now)
 print_step "Removing container ${CONTAINER_NAME}..."
@@ -386,32 +433,32 @@ print_step "Generating Dockerfile..."
 cat > Dockerfile << EOF
 # syntax=docker/dockerfile:1.2
 
-ARG AMARELEO_VERSION=${AMARELEO_VERSION}
+ARG DEVNET_VERSION=${DEVNET_VERSION}
 ARG GIT_COMMIT=""
 ARG BUILD_DATE=""
 ARG REPO_URL=""
 
-FROM ghcr.io/sealance-io/amareleo-chain:\${AMARELEO_VERSION}
+FROM ghcr.io/sealance-io/aleo-devnet:\${DEVNET_VERSION}
 
 # OCI standard labels
 LABEL org.opencontainers.image.created="\${BUILD_DATE}"
 LABEL org.opencontainers.image.authors="Sealance.io"
 LABEL org.opencontainers.image.url="\${REPO_URL}"
 LABEL org.opencontainers.image.source="\${REPO_URL}"
-LABEL org.opencontainers.image.version="\${AMARELEO_VERSION}"
+LABEL org.opencontainers.image.version="\${DEVNET_VERSION}"
 LABEL org.opencontainers.image.revision="\${GIT_COMMIT}"
-LABEL org.opencontainers.image.title="Amareleo Chain Custom"
-LABEL org.opencontainers.image.description="Amareleo Chain node with sealance-io programs deployment"
+LABEL org.opencontainers.image.title="Aleo devnet Custom"
+LABEL org.opencontainers.image.description="Aleo devnet node with sealance-io programs deployment"
 #LABEL org.opencontainers.image.documentation="https://docs.sealance.io"
-LABEL org.opencontainers.image.base.name="ghcr.io/sealance-io/amareleo-chain:\${AMARELEO_VERSION}"
+LABEL org.opencontainers.image.base.name="ghcr.io/sealance-io/aleo-devnet:\${DEVNET_VERSION}"
 
-COPY --chown=amareleo:amareleo ./amareleo /data/amareleo
+COPY --chown=devnet:devnet ./devnet /aleo
 
 # Set the entrypoint to run the node
-ENTRYPOINT ["amareleo-chain", "start"]
+ENTRYPOINT ["/usr/local/bin/leo"]
 
 # Provide default arguments that can be overridden
-CMD ["--network", "1", "--verbosity", "1", "--rest", "0.0.0.0:3030", "--rest-rps", "100", "--storage", "/data/amareleo", "--keep-state"]
+CMD ["devnet", "--storage", "/data", "--yes", "--verbosity", "4", "--snarkos", "./snarkos", "--num-clients", "1"]
 EOF
 print_success "Dockerfile generated."
 
@@ -425,20 +472,22 @@ echo ""
 # Validate remaining prerequisites
 print_step "Validating build prerequisites..."
 
-# Check if ./amareleo directory exists and has content
-if [ ! -d "./amareleo" ]; then
-    print_error "./amareleo directory not found. This should have been created by the deployment process."
+# Check if ./devnet directory exists and has content
+if [ ! -d "./devnet" ]; then
+    print_error "./devnet directory not found. This should have been created by the deployment process."
     exit 1
 fi
 
-# Check if amareleo has actual blockchain state files
-if [ -z "$(find ./amareleo -name "*.json" -o -name "*.db" -o -name "*.log" 2>/dev/null | head -1)" ]; then
-    print_warning "./amareleo directory exists but appears to lack expected blockchain state files."
-    print_warning "Deployment may not have fully completed. Continuing anyway..."
-fi
+rm -rf "$(pwd)/devnet/snarkos"
 
-if [ -z "$(ls -A ./amareleo)" ]; then
-    print_error "./amareleo directory is empty. Deployment may have failed."
+# Check if aleo-devnet has actual blockchain state files
+# if [ -z "$(find ./devnet -name "*.json" -o -name "*.db" -o -name "*.log" 2>/dev/null | head -1)" ]; then
+#     print_warning "./devnet directory exists but appears to lack expected blockchain state files."
+#     print_warning "Deployment may not have fully completed. Continuing anyway..."
+# fi
+
+if [ -z "$(ls -A ./devnet)" ]; then
+    print_error "./devnet directory is empty. Deployment may have failed."
     exit 1
 fi
 
@@ -476,8 +525,8 @@ GIT_COMMIT=$(git rev-parse HEAD)
 BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Container image configuration
-IMAGE_NAME="ghcr.io/sealance-io/amareleo-chain-custom"
-VERSION_TAG="${AMARELEO_VERSION}-${SHORT_SHA}"
+IMAGE_NAME="ghcr.io/sealance-io/aleo-devnet-custom"
+VERSION_TAG="${DEVNET_VERSION}-${SHORT_SHA}"
 LATEST_TAG="latest"
 
 # Display build information
@@ -494,8 +543,8 @@ echo "  Latest Tag: ${LATEST_TAG}"
 echo ""
 
 # Show files that will be copied (including hidden files)
-print_step "Files in ./amareleo directory (including hidden files):"
-ls -la ./amareleo
+print_step "Files in ./devnet directory (including hidden files):"
+ls -la ./devnet
 echo ""
 
 # Function to build and push multi-platform images
@@ -623,7 +672,7 @@ print_success "Complete build and deployment process finished successfully!"
 echo ""
 echo "Deployment artifacts were generated from:"
 echo "  📦 Repository: ${REPO_URL_HTTPS} (${GIT_REF})"
-echo "  📦 Base image: ${AMARELEO_IMAGE}"
+echo "  📦 Base image: ${DEVNET_IMAGE}"
 echo ""
 if [[ "$SKIP_PUSH" == "false" ]]; then
     echo "Your custom container images are now available at:"

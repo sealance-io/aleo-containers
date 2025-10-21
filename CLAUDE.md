@@ -30,6 +30,16 @@ This repository provides Docker containerization for the Aleo blockchain ecosyst
 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --local-arch --no-push
 ```
 
+### Building Deployment Snapshots
+
+```bash
+# Build deployment snapshot for custom branch/commit (without pushing to remote registry)
+./build-publish-deployment-snapshot.sh --commit main --skip-push
+
+# Build deployment snapshot with custom versions for leo and snarkos
+./build-publish-deployment-snapshot.sh --version v3.2.0-v4.2.2
+```
+
 ### Running Containers
 
 ```bash
@@ -92,7 +102,7 @@ All Dockerfiles use multi-stage builds:
 
 **Docker Compose Network**: Uses fixed IP addressing (172.20.0.0/16) with:
 - validator0: 172.20.0.2 (verbose logging, REST disabled)
-- validator1-3: 172.20.0.3-5 (quiet logging)
+- validator1-3: 172.20.0.3-5 (quiet logging)  
 - client0: 172.20.0.6 (REST API on port 3030)
 
 ### Build Script Intelligence
@@ -103,6 +113,12 @@ The `build-publish-image.sh` script:
 - Handles version-specific build arguments based on image name
 - Retries failed pushes up to 3 times with 10-second delays
 - Uses script directory as build context (important for COPY commands)
+
+The `build-publish-deployment-snapshot.sh` script:
+- Creates deployment-ready snapshots of custom Aleo programs
+- Supports any custom commit/branch for 'https://github.com/sealance-io/compliant-transfer-aleo'
+- Uses Leo CI image with full toolchain for building
+- Follows same multi-arch and registry patterns as main build script
 
 ### Environment Variables for Customization
 
@@ -120,7 +136,3 @@ AMARELEO_REPO="https://github.com/your-fork/amareleo-chain" ./build-publish-imag
 NODE_VERSION=18 DEBIAN_RELEASE=bullseye ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 RUST_VERSION=1.88.0 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 ```
-
-## Current Working Branch
-
-The current branch is `or/build_leo_devnet` which adds the new aleo-devnet.Dockerfile for integrated Leo + snarkOS development environment. Main branch is `main`.
