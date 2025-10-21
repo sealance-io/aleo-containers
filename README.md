@@ -30,6 +30,9 @@ Pre-built images are available on GitHub Container Registry:
 #### Aleo Devnet
 - **Integrated**: `ghcr.io/sealance-io/aleo-devnet:v3.2.0-v4.2.2`
 
+### Custom Deployment Snapshots
+- **With deployed programs**: `ghcr.io/sealance-io/aleo-devnet-custom:latest`
+
 You can also use the `latest` tag to always get the most recent version.
 
 ### Image Contents
@@ -190,13 +193,14 @@ The project consists of the following files:
 
 ```
 .
-├── build-publish-image.sh    # Build script for creating and publishing images
-├── leo.Dockerfile            # Multi-stage Dockerfile for Leo Lang
-├── amareleo.Dockerfile       # Multi-stage Dockerfile for Amareleo Chain
-├── aleo-devnet.Dockerfile    # Multi-stage Dockerfile for Aleo Devnet (Leo + snarkOS)
-├── docker-compose.yaml       # Docker Compose setup for local testnet
-├── download-provers.sh       # Script to download Aleo prover parameters
-└── README.md                 # This documentation file
+├── build-publish-image.sh               # Build script for creating and publishing images
+├── build-publish-deployment-snapshot.sh # Build script for deployment snapshots
+├── leo.Dockerfile                       # Multi-stage Dockerfile for Leo Lang
+├── amareleo.Dockerfile                  # Multi-stage Dockerfile for Amareleo Chain
+├── aleo-devnet.Dockerfile               # Multi-stage Dockerfile for Aleo Devnet (Leo + snarkOS)
+├── docker-compose.yaml                  # Docker Compose setup for local testnet
+├── download-provers.sh                  # Script to download Aleo prover parameters
+└── README.md                            # This documentation file
 ```
 
 The build script automatically:
@@ -207,7 +211,10 @@ The build script automatically:
 
 ## 🔄 CI/CD Automation
 
-This repository includes automated workflows for building and publishing images.
+This repository includes automated workflows for building and publishing images, including:
+- Automated version detection and builds for Leo and Amareleo
+- Manual build triggers through GitHub Actions
+- Deployment snapshot creation for custom Aleo programs
 
 For detailed information about the CI/CD workflows, please see the [CI/CD documentation](./docs/CI.md).
 
@@ -283,6 +290,37 @@ cat ~/.github/token | docker login ghcr.io --username USERNAME --password-stdin
 # Get help
 ./build-publish-image.sh --help
 ```
+
+### Building Deployment Snapshots
+
+The repository includes a script to create custom Aleo devnet images with pre-deployed programs:
+
+```bash
+# Build deployment snapshot from main branch (without pushing)
+./build-publish-deployment-snapshot.sh --commit main --skip-push
+
+# Build from specific branch/tag/commit
+./build-publish-deployment-snapshot.sh --commit develop --skip-push
+./build-publish-deployment-snapshot.sh --commit v1.0.0 --skip-push
+./build-publish-deployment-snapshot.sh --commit abc1234 --skip-push
+
+# Build with custom base image version
+./build-publish-deployment-snapshot.sh --version v3.2.0-v4.2.2 --skip-push
+
+# Build and push to registry (requires authentication)
+./build-publish-deployment-snapshot.sh --commit main --version v3.2.0-v4.2.2
+
+# Get help
+./build-publish-deployment-snapshot.sh --help
+```
+
+This script:
+- Clones the compliant-transfer-aleo repository
+- Starts a local Aleo devnet container
+- Deploys programs to the devnet
+- Captures the blockchain state with deployed programs
+- Creates a new Docker image with the pre-deployed state
+- Supports multi-architecture builds (AMD64 and ARM64)
 
 ### Error Recovery
 
