@@ -140,7 +140,9 @@ jobs:
         working-directory: compliant-transfer-aleo-build
         run: |
           set -euo pipefail
+          echo "[BUILD] Creating devnet directory in $(pwd)..."
           mkdir -p devnet
+          echo "[SUCCESS] Created devnet directory: $(pwd)/devnet"
 
       - name: Bootstrap aleo-devnet
         working-directory: compliant-transfer-aleo-build
@@ -247,34 +249,28 @@ jobs:
           set -euo pipefail
           # Deploy programs to local devnet
           npm run deploy:devnet
-
-      - name: Teardown devnet container
-        if: always()
-        run: |
-          set -euo pipefail
-          # Gracefully stop container
+          
+          # Step 5: Gracefully stop container
+          echo "[BUILD] Stopping container devnet gracefully..."
           docker stop --timeout=30 devnet
+          echo "[SUCCESS] Container stopped."
+          
           # Additional wait to ensure everything is flushed
+          echo "[BUILD] Waiting for complete shutdown..."
           sleep 30
-
-      - name: Copy state from volume to host
-        working-directory: compliant-transfer-aleo-build
-        run: |
-          set -euo pipefail
+          
+          # Step 6: Copy state from volume to host (ensure we're in correct directory)
           echo "[BUILD] Copying state from volume to host..."
           docker run --rm \
             -v aleo_devnet_state_volume:/aleo \
-            -v ./devnet:/backup \
+            -v "$(pwd)/devnet:/backup" \
             alpine sh -c "cp -r /aleo/. /backup/"
-          echo "[SUCCESS] State copied to ./compliant-transfer-aleo-build/devnet"
-      
-      - name: Cleanup container and volume
-        if: always()
-        run: |
-          set -euo pipefail
+          echo "[SUCCESS] State copied to $(pwd)/devnet"
+          
+          # Step 7: Cleanup container and volume
           echo "[BUILD] Removing container devnet..."
           docker rm devnet || true
-          echo "[BUILD] Removing volume devnet..."
+          echo "[BUILD] Removing volume aleo_devnet_state_volume..."
           docker volume rm aleo_devnet_state_volume || true
           echo "[SUCCESS] Container and volume removed."
 
@@ -283,21 +279,32 @@ jobs:
         working-directory: compliant-transfer-aleo-build
         run: |
           set -euo pipefail
-
+          
+          echo "[BUILD] Current directory: $(pwd)"
+          echo "[BUILD] Listing contents of current directory:"
+          ls -la .
+          echo "[BUILD] Checking for devnet directory..."
+          
           # Check if ./devnet directory exists and has content
           if [ ! -d "./devnet" ]; then
               echo "[ERROR] ./devnet directory not found. This should have been created by the deployment process."
               exit 1
           fi
-
+          
+          echo "[BUILD] devnet directory found. Checking contents..."
+          ls -la ./devnet
+          
+          # Remove snarkos binary if it exists (as per script)
           rm -rf ./devnet/snarkos
 
+          # Final validation - check if directory has content after cleanup
           if [ -z "$(ls -A ./devnet)" ]; then
               echo "[ERROR] ./devnet directory is empty. Deployment may have failed."
+              echo "[DEBUG] Volume copy may have failed or deployment didn't create state."
               exit 1
           fi
-
-          echo "Files in ./devnet directory (including hidden files):"
+          
+          echo "[SUCCESS] Files in ./devnet directory (including hidden files):"
           ls -la ./devnet
       
       - name: Generate Dockerfile
