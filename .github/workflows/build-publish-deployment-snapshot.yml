@@ -1,4 +1,4 @@
-name: Create amareleo deployment snapshot
+name: Create aleo-devnet deployment snapshot
 
 on:
   workflow_call:
@@ -8,15 +8,15 @@ on:
         required: false
         default: 'main'
         type: string
-      amareleo-version:
-        description: 'Version tag for amareleo-chain base image'
+      aleo-devnet-version:
+        description: 'Version tag for aleo-devnet base image'
         required: false
-        default: 'v2.5.0'
+        default: 'v3.2.0-v4.2.2'
         type: string
       image-name:
         description: 'Custom image name (without registry)'
         required: false
-        default: 'amareleo-chain-custom'
+        default: 'aleo-devnet-custom'
         type: string
       push-latest:
         description: 'Also tag and push as latest'
@@ -35,15 +35,15 @@ on:
         required: false
         default: 'main'
         type: string
-      amareleo-version:
-        description: 'Version tag for amareleo-chain base image'
+      aleo-devnet-version:
+        description: 'Version tag for aleo-devnet base image'
         required: false
-        default: 'v2.5.0'
+        default: 'v3.2.0-v4.2.2'
         type: string
       image-name:
         description: 'Custom image name (without registry)'
         required: false
-        default: 'amareleo-chain-custom'
+        default: 'aleo-devnet-custom'
         type: string
       push-latest:
         description: 'Also tag and push as latest'
@@ -69,7 +69,7 @@ jobs:
       actions: read
     timeout-minutes: 180
     container:
-      image: ghcr.io/sealance-io/leo-lang-ci:v3.1.0
+      image: ghcr.io/sealance-io/leo-lang-ci:v3.2.0
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.github_token }}
@@ -91,6 +91,7 @@ jobs:
 
       - name: Clone target repository
         run: |
+          set -euo pipefail
           echo "Cloning repository with ref: ${{ inputs.git-ref }}"
           git clone --depth 1 --branch "${{ inputs.git-ref }}" \
             https://github.com/sealance-io/compliant-transfer-aleo.git \
@@ -123,41 +124,21 @@ jobs:
           dokojs --help
       - name: Display installed version
         run: echo "Installed version is ${{ steps.setup-doko.outputs.version }}"
-      
-      - name: Prepare deployment environment
-        working-directory: compliant-transfer-aleo-build
-        run: |
-          # Copy environment file
-          cp .env.example .env
-          
-          # Install dependencies
-          npm ci --ignore-scripts
 
-          # Apply package patches
-          npm run postinstall
-      
-          # Compile leo programs
-          npm run compile
-
-      - name: Create data directory
-        shell: bash
+      - name: Bootstrap aleo-devnet
         working-directory: compliant-transfer-aleo-build
         run: |
           set -euo pipefail
-          mkdir -p amareleo
-
-      - name: Bootstrap Amareleo devnet
-        working-directory: compliant-transfer-aleo-build
-        run: |
-          docker pull ghcr.io/sealance-io/amareleo-chain:${{ inputs.amareleo-version }}
+          docker pull ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
           docker run -d \
             --name devnet \
             -p 3030:3030 \
-            -v amareleo:/data/amareleo \
-            ghcr.io/sealance-io/amareleo-chain:${{ inputs.amareleo-version }}
+            -v devnet:/aleo \
+            ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
 
       - name: Wait for devnet port to open
         run: |
+          set -euo pipefail
           HOST=host.docker.internal
           PORT=3030
           TIMEOUT=3
@@ -172,51 +153,170 @@ jobs:
 
           echo "[SUCCESS] ${HOST}:${PORT} is now open"
 
+      - name: Wait for credits.aleo to be available
+        run: |
+          set -euo pipefail
+          echo "[BUILD] Waiting for credits.aleo program to be available..."
+          RETRY_COUNT=0
+          MAX_RETRIES=50
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if curl -s -o /dev/null -w "%{http_code}" "${{ env.TESTNET_ENDPOINT }}/testnet/program/credits.aleo" | grep -q "200"; then
+              echo "[SUCCESS] credits.aleo program is available."
+              break
+            fi
+            echo "[BUILD] Waiting for credits.aleo... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
+            sleep 5
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+          done
+          
+          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+            echo "[ERROR] credits.aleo program not available after ${MAX_RETRIES} attempts."
+            echo "[WARNING] Container logs:"
+            docker logs devnet --tail 50 || true
+            exit 1
+          fi
+      
+      - name: Prepare deployment environment
+        working-directory: compliant-transfer-aleo-build
+        run: |
+          set -euo pipefail
+          # Copy environment file
+          cp .env.example .env
+          
+          # Install dependencies
+          npm ci --ignore-scripts
+
+          # Apply package patches
+          npm run postinstall
+
+          # build @sealance-io/policy-engine-aleo
+          npm run build --workspace=@sealance-io/policy-engine-aleo
+      
+          # Compile leo programs
+          npm run compile
+
+      - name: Wait for devnet to reach consensus version
+        run: |
+          set -euo pipefail
+          echo "[BUILD] Waiting for devnet to reach consensus version >= 10..."
+          RETRY_COUNT=0
+          MAX_RETRIES=50
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            CONSENSUS_VERSION=$(curl -s "${{ env.TESTNET_ENDPOINT }}/testnet/consensus_version" 2>/dev/null || echo "")
+            if [ -n "$CONSENSUS_VERSION" ] && [ "$CONSENSUS_VERSION" -ge 10 ] 2>/dev/null; then
+              echo "[SUCCESS] Devnet consensus version is $CONSENSUS_VERSION (>= 10)."
+              break
+            fi
+            if [ -z "$CONSENSUS_VERSION" ]; then
+              echo "[BUILD] Waiting for consensus version response... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
+            else
+              echo "[BUILD] Current consensus version: $CONSENSUS_VERSION, waiting for >= 10... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
+            fi
+            sleep 5
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+          done
+          
+          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+            echo "[ERROR] Devnet did not reach consensus version >= 10 after ${MAX_RETRIES} attempts."
+            echo "[WARNING] Container logs:"
+            docker logs devnet --tail 50 || true
+            exit 1
+          fi
+
+      - name: Create data directory
+        shell: bash
+        working-directory: compliant-transfer-aleo-build
+        run: |
+          set -euo pipefail
+          mkdir -p devnet
+
       - name: Run deployment and extract state
         working-directory: compliant-transfer-aleo-build
         run: |
+          set -euo pipefail
           # Deploy programs to local devnet
           npm run deploy:devnet
 
       - name: Teardown devnet container
         if: always()
         run: |
-          docker stop devnet
+          set -euo pipefail
+          # Gracefully stop container
+          docker stop --time=30 devnet
+          # Additional wait to ensure everything is flushed
+          sleep 30
+
+      - name: Copy state from volume to host
+        run: |
+          set -euo pipefail
+          echo "[BUILD] Copying state from volume to host..."
+          docker run --rm \
+            -v devnet:/aleo \
+            -v $(pwd)/compliant-transfer-aleo-build/devnet:/backup \
+            alpine sh -c "cp -r /aleo/. /backup/"
+          echo "[SUCCESS] State copied to ./compliant-transfer-aleo-build/devnet"
+      
+      - name: Cleanup container and volume
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "[BUILD] Removing container devnet..."
+          docker rm devnet || true
+          echo "[BUILD] Removing volume devnet..."
+          docker volume rm devnet || true
+          echo "[SUCCESS] Container and volume removed."
+
+      - name: Validate remaining prerequisites
+        shell: bash
+        working-directory: compliant-transfer-aleo-build
+        run: |
+          set -euo pipefail
+          # Check if ./devnet directory exists and has content
+          if [ ! -d "./devnet" ]; then
+              echo "[ERROR] ./devnet directory not found. This should have been created by the deployment process."
+              exit 1
+          fi
+
+          rm -rf "$(pwd)/devnet/snarkos"
+
+          if [ -z "$(ls -A ./devnet)" ]; then
+              echo "[ERROR] ./devnet directory is empty. Deployment may have failed."
+              exit 1
+          fi
       
       - name: Generate Dockerfile
         working-directory: compliant-transfer-aleo-build
         run: |
+          set -euo pipefail
           cat > Dockerfile << 'EOF'
           # syntax=docker/dockerfile:1.4
-          ARG AMARELEO_VERSION=${{ inputs.amareleo-version }}
-          FROM ghcr.io/sealance-io/amareleo-chain:${AMARELEO_VERSION}
+          ARG DEVNET_VERSION=${DEVNET_VERSION}
+          FROM ghcr.io/sealance-io/aleo-devnet:\${DEVNET_VERSION}
           
           # Metadata
           LABEL org.opencontainers.image.source="https://github.com/sealance-io/compliant-transfer-aleo"
-          LABEL org.opencontainers.image.description="Amareleo Chain node with pre-deployed contracts"
+          LABEL org.opencontainers.image.description="Aleo devnet node with pre-deployed contracts"
           LABEL org.opencontainers.image.authors="Sealance.io"
           
           # Copy blockchain state with deployed contracts
-          COPY --chown=amareleo:amareleo ./amareleo /data/amareleo
+          COPY ./devnet /aleo
           
-          # Ensure proper permissions
-          USER amareleo
-          
-          # Entrypoint from base image
-          ENTRYPOINT ["amareleo-chain", "start"]
-          CMD ["--network", "1", "--verbosity", "1", "--rest", "0.0.0.0:3030", "--rest-rps", "100", "--storage", "/data/amareleo", "--keep-state"]
+          # Set the entrypoint to run the node
+          ENTRYPOINT ["/usr/local/bin/leo"]
+          CMD ["devnet", "--storage", "/data", "--yes", "--verbosity", "4", "--snarkos", "./snarkos", "--num-clients", "1"]
           EOF
       
       - name: Extract metadata
         id: meta
         working-directory: compliant-transfer-aleo-build
         run: |
+          set -euo pipefail
           # Get git commit info
           SHORT_SHA=$(git rev-parse --short=8 HEAD)
           FULL_SHA=$(git rev-parse HEAD)
           
           # Generate version tag
-          VERSION_TAG="${{ inputs.amareleo-version }}-${SHORT_SHA}"
+          VERSION_TAG="${{ inputs.aleo-devnet-version }}-${SHORT_SHA}"
           
           # Set outputs
           echo "short-sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
@@ -233,32 +333,31 @@ jobs:
           tags: |
             ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}
             ${{ inputs.push-latest == 'true' && format('{0}:latest', steps.meta.outputs.image-name) || '' }}
-          build-args: |
-            AMARELEO_VERSION=${{ inputs.amareleo-version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
-            org.opencontainers.image.title=Amareleo Chain Custom
-            org.opencontainers.image.description=Amareleo Chain with pre-deployed contracts
+            org.opencontainers.image.title=Aleo Devnet Custom
+            org.opencontainers.image.description=Aleo devnet node with pre-deployed contracts
             org.opencontainers.image.source=https://github.com/sealance-io/compliant-transfer-aleo
             org.opencontainers.image.version=${{ steps.meta.outputs.version-tag }}
             org.opencontainers.image.created=${{ github.event.repository.updated_at }}
             org.opencontainers.image.revision=${{ steps.meta.outputs.full-sha }}
-            org.opencontainers.image.base.name=ghcr.io/sealance-io/amareleo-chain:${{ inputs.amareleo-version }}
+            org.opencontainers.image.base.name=ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
       
       - name: Generate summary
         run: |
+          set -euo pipefail
           cat >> $GITHUB_STEP_SUMMARY << EOF
           # Build Summary
           
-          ## 🚀 Custom Amareleo Chain Image Built Successfully!
+          ## 🚀 Custom Aleo Devnet Chain Image Built Successfully!
           
           ### Build Information
           - **Triggered by**: ${{ github.event_name == 'workflow_dispatch' && 'Manual dispatch' || 'Workflow call' }}
           - **Actor**: @${{ github.actor }}
           
           ### Image Details
-          - **Base Version**: \`${{ inputs.amareleo-version }}\`
+          - **Base Version**: \`${{ inputs.aleo-devnet-version }}\`
           - **Git Reference**: \`${{ inputs.git-ref }}\`
           - **Git SHA**: \`${{ steps.meta.outputs.full-sha }}\`
           

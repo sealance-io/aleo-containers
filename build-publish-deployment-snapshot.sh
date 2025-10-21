@@ -300,10 +300,10 @@ sleep 5
 # Check if we can connect to the container
 print_step "Checking container connectivity on port 3030..."
 RETRY_COUNT=0
-MAX_RETRIES=10
+MAX_RETRIES=30
 while ! nc -z localhost 3030 2>/dev/null && [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     print_warning "Waiting for container to be ready on port 3030... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
-    sleep 2
+    sleep 3
     RETRY_COUNT=$((RETRY_COUNT + 1))
 done
 
@@ -327,6 +327,12 @@ if ! npm run postinstall; then
     print_error "Failed to execute post-install script."
     exit 1
 fi
+print_step "Building @sealance-io/policy-engine-aleo sdk..."
+if ! npm run build --workspace=@sealance-io/policy-engine-aleo; then
+    print_error "Failed to build @sealance-io/policy-engine-aleo."
+    exit 1
+fi
+print_success "@sealance-io/policy-engine-aleo installed."
 
 # Check if dokojs is available globally
 if ! command -v dokojs &> /dev/null; then
@@ -338,14 +344,14 @@ fi
 # Wait for "credits.aleo" to be available from devnet
 print_step "Waiting for credits.aleo program to be available..."
 RETRY_COUNT=0
-MAX_RETRIES=20
+MAX_RETRIES=50
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     if curl -s -o /dev/null -w "%{http_code}" "http://localhost:3030/testnet/program/credits.aleo" | grep -q "200"; then
         print_success "credits.aleo program is available."
         break
     fi
     print_warning "Waiting for credits.aleo... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
-    sleep 3
+    sleep 5
     RETRY_COUNT=$((RETRY_COUNT + 1))
 done
 
@@ -366,7 +372,7 @@ print_success "Project compiled."
 # Wait for devnet to reach target consensus version
 print_step "Waiting for devnet to reach consensus version >= 10..."
 RETRY_COUNT=0
-MAX_RETRIES=15
+MAX_RETRIES=50
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     CONSENSUS_VERSION=$(curl -s "http://localhost:3030/testnet/consensus_version" 2>/dev/null || echo "")
     if [ -n "$CONSENSUS_VERSION" ] && [ "$CONSENSUS_VERSION" -ge 10 ] 2>/dev/null; then
@@ -449,10 +455,9 @@ LABEL org.opencontainers.image.version="\${DEVNET_VERSION}"
 LABEL org.opencontainers.image.revision="\${GIT_COMMIT}"
 LABEL org.opencontainers.image.title="Aleo devnet Custom"
 LABEL org.opencontainers.image.description="Aleo devnet node with sealance-io programs deployment"
-#LABEL org.opencontainers.image.documentation="https://docs.sealance.io"
 LABEL org.opencontainers.image.base.name="ghcr.io/sealance-io/aleo-devnet:\${DEVNET_VERSION}"
 
-COPY --chown=devnet:devnet ./devnet /aleo
+COPY ./devnet /aleo
 
 # Set the entrypoint to run the node
 ENTRYPOINT ["/usr/local/bin/leo"]
@@ -479,12 +484,6 @@ if [ ! -d "./devnet" ]; then
 fi
 
 rm -rf "$(pwd)/devnet/snarkos"
-
-# Check if aleo-devnet has actual blockchain state files
-# if [ -z "$(find ./devnet -name "*.json" -o -name "*.db" -o -name "*.log" 2>/dev/null | head -1)" ]; then
-#     print_warning "./devnet directory exists but appears to lack expected blockchain state files."
-#     print_warning "Deployment may not have fully completed. Continuing anyway..."
-# fi
 
 if [ -z "$(ls -A ./devnet)" ]; then
     print_error "./devnet directory is empty. Deployment may have failed."
