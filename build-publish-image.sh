@@ -51,6 +51,7 @@ BUILD_CI=false
 TAG_LATEST=true
 PUSH_IMAGES=true
 HOST_ARCH_ONLY=false
+VARIANT=""
 
 # Get host architecture
 detect_arch() {
@@ -174,8 +175,17 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       ;;
+    --variant)
+      if [[ $# -gt 1 ]]; then
+        VARIANT="$2"
+        shift 2
+      else
+        echo "Error: Missing argument for --variant"
+        exit 1
+      fi
+      ;;
     --help)
-      echo "Usage: $0 [--standard] [--ci] [--both] [--no-latest] [--no-push] [--local-arch] [--dockerfile FILE] [--image-name NAME]"
+      echo "Usage: $0 [--standard] [--ci] [--both] [--no-latest] [--no-push] [--local-arch] [--dockerfile FILE] [--image-name NAME] [--variant VARIANT]"
       echo "  --standard       Build standard image (default)"
       echo "  --ci             Build image with GitHub Actions tools (only for leo-lang)"
       echo "  --both           Build both image variants (only for leo-lang)"
@@ -184,6 +194,11 @@ while [[ $# -gt 0 ]]; do
       echo "  --local-arch     Build only for the host architecture ($(detect_arch))"
       echo "  --dockerfile     Specify the Dockerfile to use (default: leo.Dockerfile)"
       echo "  --image-name     Specify the base name for the image (default: leo-lang)"
+      echo "  --variant        Add suffix to version tags only (e.g., node24, experimental)"
+      echo ""
+      echo "Examples:"
+      echo "  $0 --dockerfile leo.Dockerfile --image-name leo-lang --variant node24"
+      echo "  # Produces: leo-lang:v3.2.0-node24, leo-lang:latest"
       exit 0
       ;;
     *)
@@ -235,6 +250,9 @@ fi
 
 echo "Building for $IMAGE_NAME with $DOCKERFILE"
 echo "Version: $PROJECT_VERSION"
+if [[ -n "$VARIANT" ]]; then
+  echo "Variant: $VARIANT (will be appended to version tags)"
+fi
 if [[ -n "$PROJECT_REPO" ]]; then
   echo "Repository: $PROJECT_REPO"
 fi
@@ -245,6 +263,13 @@ check_registry_credentials
 build_and_push() {
   local target_stage=$1
   local image_suffix=$2
+  
+  # Add variant suffix to version tags only (not latest)
+  local tag_variant=""
+  if [[ -n "$VARIANT" ]]; then
+    tag_variant="-${VARIANT}"
+  fi
+  
   local manifest_name="${IMAGE_NAME}${image_suffix}"
   local full_image_name="${REGISTRY}/${ORG}/${IMAGE_NAME}${image_suffix}"
   
@@ -299,12 +324,12 @@ build_and_push() {
       
       podman build \
         "${podman_args[@]}" \
-        --tag "${full_image_name}:${PROJECT_VERSION}" \
+        --tag "${full_image_name}:${PROJECT_VERSION}${tag_variant}" \
         -f "${SCRIPT_DIR}/${DOCKERFILE}" \
         "${SCRIPT_DIR}"
       
       if [[ "$TAG_LATEST" == "true" ]]; then
-        podman tag "${full_image_name}:${PROJECT_VERSION}" "${full_image_name}:latest"
+        podman tag "${full_image_name}:${PROJECT_VERSION}${tag_variant}" "${full_image_name}:latest"
       fi
     else
       # Create a multi-architecture manifest (only if it doesn't exist)
@@ -330,7 +355,7 @@ build_and_push() {
       
       podman build \
         "${podman_build_args[@]}" \
-        --tag "${full_image_name}:${PROJECT_VERSION}" \
+        --tag "${full_image_name}:${PROJECT_VERSION}${tag_variant}" \
         --manifest "${manifest_name}" \
         "${platform_args[@]}" \
         -f "${SCRIPT_DIR}/${DOCKERFILE}" \
@@ -338,10 +363,10 @@ build_and_push() {
 
       # Push the version tag if requested
       if [[ "$PUSH_IMAGES" == "true" ]]; then
-        echo "Pushing ${full_image_name}:${PROJECT_VERSION}..."
+        echo "Pushing ${full_image_name}:${PROJECT_VERSION}${tag_variant}..."
         retry_command podman manifest push --all \
           "${manifest_name}" \
-          "docker://${full_image_name}:${PROJECT_VERSION}"
+          "docker://${full_image_name}:${PROJECT_VERSION}${tag_variant}"
 
         # Push latest tag if enabled
         if [[ "$TAG_LATEST" == "true" ]]; then
@@ -372,7 +397,7 @@ build_and_push() {
     fi
 
     # Set up tags based on whether latest is enabled
-    TAGS=("--tag" "${full_image_name}:${PROJECT_VERSION}")
+    TAGS=("--tag" "${full_image_name}:${PROJECT_VERSION}${tag_variant}")
     if [[ "$TAG_LATEST" == "true" ]]; then
       TAGS+=("--tag" "${full_image_name}:latest")
     fi
@@ -435,4 +460,14 @@ if [[ "$BUILD_CI" == "true" ]]; then
   fi
 fi
 
+echo ""
+echo "Build Summary:"
+echo "  Image: ${REGISTRY}/${ORG}/${IMAGE_NAME}"
+echo "  Version: ${PROJECT_VERSION}"
+if [[ -n "${VARIANT}" ]]; then
+  echo "  Variant suffix: -${VARIANT} (applied to version tags only)"
+fi
+echo "  Tagged as latest: $([ "$TAG_LATEST" == "true" ] && echo "Yes" || echo "No")"
+echo "  Pushed to registry: $([ "$PUSH_IMAGES" == "true" ] && echo "Yes" || echo "No")"
+echo ""
 echo "Build and push process completed successfully!"
