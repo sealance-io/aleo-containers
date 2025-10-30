@@ -2,7 +2,7 @@
 
 ARG NODE_VERSION=24
 ARG DEBIAN_RELEASE=trixie
-ARG RUST_VERSION=1.88.0
+ARG RUST_VERSION=1.91.0
 
 # Stage 1: Build leo-lang from source
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as builder

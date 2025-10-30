@@ -5,7 +5,7 @@
 # Build arguments
 ARG LEO_VERSION=v3.3.0
 ARG SNARKOS_VERSION=v4.3.0
-ARG RUST_VERSION=1.88.0
+ARG RUST_VERSION=1.91.0
 
 # Stage 1: Build Leo CLI
 FROM rust:${RUST_VERSION}-trixie AS leo-builder

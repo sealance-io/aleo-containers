@@ -294,7 +294,7 @@ build_and_push() {
     common_build_args+=(
       "--build-arg" "LEO_VERSION=${LEO_VERSION}"
       "--build-arg" "SNARKOS_VERSION=${SNARKOS_VERSION}"
-      "--build-arg" "RUST_VERSION=${RUST_VERSION:-1.88.0}"
+      "--build-arg" "RUST_VERSION=${RUST_VERSION:-1.91.0}"
     )
   else
     # Standard images use PROJECT_VERSION_ARG and PROJECT_REPO_ARG
