@@ -1,6 +1,6 @@
 services:
   validator0:
-    image: localhost/snarkos:devnet-v4.2.2
+    image: localhost/snarkos:devnet-v4.3.0
     container_name: validator0
     entrypoint: ["snarkos"]
     command: [
@@ -20,7 +20,7 @@ services:
           - validator0
 
   validator1:
-    image: localhost/snarkos:devnet-v4.2.2
+    image: localhost/snarkos:devnet-v4.3.0
     container_name: validator1
     entrypoint: ["snarkos"]
     command: [
@@ -40,7 +40,7 @@ services:
           - validator1
 
   validator2:
-    image: localhost/snarkos:devnet-v4.2.2
+    image: localhost/snarkos:devnet-v4.3.0
     container_name: validator2
     entrypoint: ["snarkos"]
     # environment: 
@@ -60,7 +60,7 @@ services:
           - validator2
 
   validator3:
-    image: localhost/snarkos:devnet-v4.2.2
+    image: localhost/snarkos:devnet-v4.3.0
     container_name: validator3
     entrypoint: ["snarkos"]
     command: [
@@ -80,7 +80,7 @@ services:
           - validator3
 
   client:
-    image: localhost/snarkos:devnet-v4.2.2
+    image: localhost/snarkos:devnet-v4.3.0
     container_name: client0
     entrypoint: ["snarkos"]
     command: [
