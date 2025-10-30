@@ -96,7 +96,7 @@ All Dockerfiles use multi-stage builds:
 **Prover Downloads**: The `download-provers.sh` script downloads mainnet/testnet parameter files to `/.aleo/resources/`. These are required for zero-knowledge proof generation and are pre-cached in images to avoid runtime downloads.
 
 **Version Dependencies**:
-- Leo v3+ requires Rust 1.88.0 (updated from 1.85.1)
+- Leo v3+ requires Rust 1.91.0 (updated from 1.85.1)
 - Leo v3.3.0 and earlier use Rust 1.85.1
 - snarkOS v4.3.0 requires specific build features: `default,snarkos-node-metrics,test_network`
 
@@ -134,5 +134,5 @@ AMARELEO_REPO="https://github.com/your-fork/amareleo-chain" ./build-publish-imag
 
 # Other overrides
 NODE_VERSION=18 DEBIAN_RELEASE=bullseye ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
-RUST_VERSION=1.88.0 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
+RUST_VERSION=1.91.0 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 ```
