@@ -380,7 +380,7 @@ AMARELEO_REPO="https://github.com/your-fork/amareleo-chain" ./build-publish-imag
 LEO_VERSION="v3.3.0" SNARKOS_VERSION="v4.3.0" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 
 # Override Rust version for Aleo Devnet
-RUST_VERSION="1.91.0" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
+RUST_VERSION="1.90.0" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 
 # Override Node.js version (Leo Lang only)
 NODE_VERSION=18 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
