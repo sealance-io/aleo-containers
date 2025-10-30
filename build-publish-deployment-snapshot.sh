@@ -39,13 +39,13 @@ usage() {
     echo ""
     echo "Options:"
     echo "  -c, --commit <sha/branch/tag>    Git commit SHA, branch, or tag to clone (default: main)"
-    echo "  -v, --version <version>          Version tag for aleo-devnet image (default: v3.2.0-v4.2.2)"
+    echo "  -v, --version <version>          Version tag for aleo-devnet image (default: v3.3.0-v4.2.2)"
     echo "  --skip-push                      Build images but skip pushing to registry (for testing)"
     echo "  -h, --help                       Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0                               # Use defaults (main branch, v3.2.0-v4.2.2)"
-    echo "  $0 -c develop -v v3.2.0-v4.2.2   # Use develop branch and v3.2.0-v4.2.2 image"
+    echo "  $0                               # Use defaults (main branch, v3.3.0-v4.2.2)"
+    echo "  $0 -c develop -v v3.3.0-v4.2.2   # Use develop branch and v3.3.0-v4.2.2 image"
     echo "  $0 --commit abc1234 --version latest"
     echo "  $0 --skip-push                   # Build locally without pushing"
     echo ""
@@ -58,7 +58,7 @@ usage() {
 
 # Parse command line arguments
 GIT_REF="main"
-DEVNET_VERSION="v3.2.0-v4.2.2"
+DEVNET_VERSION="v3.3.0-v4.2.2"
 SKIP_PUSH=false
 
 while [[ $# -gt 0 ]]; do
