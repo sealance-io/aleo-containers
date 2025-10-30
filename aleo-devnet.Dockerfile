@@ -8,7 +8,7 @@ ARG SNARKOS_VERSION=v4.2.2
 ARG RUST_VERSION=1.88.0
 
 # Stage 1: Build Leo CLI
-FROM rust:${RUST_VERSION}-bookworm AS leo-builder
+FROM rust:${RUST_VERSION}-trixie AS leo-builder
 
 ARG LEO_VERSION
 
@@ -37,7 +37,7 @@ RUN cargo build --release --locked && \
     strip /tmp/leo
 
 # Stage 2: Build snarkOS
-FROM rust:${RUST_VERSION}-bookworm AS snarkos-builder
+FROM rust:${RUST_VERSION}-trixie AS snarkos-builder
 
 ARG SNARKOS_VERSION
 
@@ -75,7 +75,7 @@ RUN cargo build --release --locked \
     strip /tmp/snarkos
 
 # Stage 3: Final runtime image
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.2
 
 ARG NODE_VERSION=22
-ARG DEBIAN_RELEASE=bookworm
+ARG DEBIAN_RELEASE=trixie
 ARG RUST_VERSION=1.88.0
 
 # Stage 1: Build leo-lang from source

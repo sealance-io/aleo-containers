@@ -39,7 +39,7 @@ DOCKERFILE=${DOCKERFILE:-"leo.Dockerfile"}
 PROJECT_VERSION=""  # Will be set based on the image type
 PROJECT_REPO=""     # Will be set based on the image type
 NODE_VERSION=${NODE_VERSION:-22}
-DEBIAN_RELEASE=${DEBIAN_RELEASE:-"bookworm"}
+DEBIAN_RELEASE=${DEBIAN_RELEASE:-"trixie"}
 
 # Hardcoded retry settings
 MAX_RETRIES=3

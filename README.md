@@ -40,7 +40,7 @@ You can also use the `latest` tag to always get the most recent version.
 #### Leo Lang Standard Image (`leo-lang`)
 - Leo CLI v3.2.0
 - Node.js v22
-- Debian Bookworm (slim)
+- Debian trixie (slim)
 - Essential SSL libraries
 
 #### Leo Lang CI Image (`leo-lang-ci`)
@@ -50,13 +50,13 @@ You can also use the `latest` tag to always get the most recent version.
 - Git + Git LFS
 - Docker CLI
 - Docker Compose
-- Debian Bookworm (full)
+- Debian trixie (full)
 - Development libraries
 - GitHub Actions workspace setup
 
 #### Amareleo Chain Standard Image (`amareleo-chain`)
 - Amareleo Chain v2.5.0
-- Debian Bookworm (slim)
+- Debian trixie (slim)
 - Essential SSL libraries
 - Running as non-root user
 
@@ -64,7 +64,7 @@ You can also use the `latest` tag to always get the most recent version.
 - Leo CLI v3.2.0 (with devnet patch for non-interactive mode)
 - snarkOS v4.2.2
 - Pre-downloaded mainnet prover parameters (~2GB)
-- Debian Bookworm (slim)
+- Debian trixie (slim)
 - Essential runtime libraries
 - Configured for local development
 
