@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.2
 
-ARG NODE_VERSION=22
+ARG NODE_VERSION=24
 ARG DEBIAN_RELEASE=trixie
 ARG RUST_VERSION=1.88.0
 

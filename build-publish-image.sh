@@ -38,7 +38,7 @@ IMAGE_NAME=${IMAGE_NAME:-"leo-lang"}
 DOCKERFILE=${DOCKERFILE:-"leo.Dockerfile"}
 PROJECT_VERSION=""  # Will be set based on the image type
 PROJECT_REPO=""     # Will be set based on the image type
-NODE_VERSION=${NODE_VERSION:-22}
+NODE_VERSION=${NODE_VERSION:-24}
 DEBIAN_RELEASE=${DEBIAN_RELEASE:-"trixie"}
 
 # Hardcoded retry settings
