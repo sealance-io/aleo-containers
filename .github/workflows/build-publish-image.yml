@@ -52,7 +52,7 @@ on:
       debian_release:
         description: 'Debian release to use'
         required: false
-        default: 'bookworm'
+        default: 'trixie'
         type: string
     secrets:
       registry_token:
@@ -105,7 +105,7 @@ on:
       debian_release:
         description: 'Debian release to use'
         required: false
-        default: 'bookworm'
+        default: 'trixie'
         type: string
 
 # Permissions required by callers
