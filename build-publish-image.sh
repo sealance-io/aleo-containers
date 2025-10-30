@@ -236,7 +236,7 @@ elif [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
   
   # Aleo-devnet uses both LEO and SNARKOS versions
   LEO_VERSION=${LEO_VERSION:-"v3.3.0"}
-  SNARKOS_VERSION=${SNARKOS_VERSION:-"v4.2.2"}
+  SNARKOS_VERSION=${SNARKOS_VERSION:-"v4.3.0"}
   PROJECT_VERSION="${LEO_VERSION}-${SNARKOS_VERSION}"
   # For aleo-devnet, we'll pass both versions as build args
   PROJECT_VERSION_ARG="LEO_VERSION"
