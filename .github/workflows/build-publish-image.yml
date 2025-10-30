@@ -47,7 +47,7 @@ on:
       node_version:
         description: 'Node.js version for leo-lang'
         required: false
-        default: '22'
+        default: '24'
         type: string
       debian_release:
         description: 'Debian release to use'
@@ -194,7 +194,7 @@ jobs:
           build-args: |
             ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
             ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
-            NODE_VERSION=${{ inputs.node_version || '22' }}
+            NODE_VERSION=${{ inputs.node_version || '24' }}
             DEBIAN_RELEASE=${{ inputs.debian_release }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -259,7 +259,7 @@ jobs:
           build-args: |
             ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
             ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
-            NODE_VERSION=${{ inputs.node_version || '22' }}
+            NODE_VERSION=${{ inputs.node_version || '24' }}
             DEBIAN_RELEASE=${{ inputs.debian_release }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

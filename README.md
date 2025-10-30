@@ -39,14 +39,14 @@ You can also use the `latest` tag to always get the most recent version.
 
 #### Leo Lang Standard Image (`leo-lang`)
 - Leo CLI v3.2.0
-- Node.js v22
+- Node.js v24
 - Debian trixie (slim)
 - Essential SSL libraries
 
 #### Leo Lang CI Image (`leo-lang-ci`)
 - Leo CLI v3.2.0
 - Full Rust toolchain (v1.85.1)
-- Node.js v22
+- Node.js v24
 - Git + Git LFS
 - Docker CLI
 - Docker Compose
