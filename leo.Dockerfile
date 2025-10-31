@@ -7,7 +7,7 @@ ARG RUST_VERSION=1.90.0
 # Stage 1: Build leo-lang from source
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as builder
 
-ARG LEO_VERSION=v3.3.0
+ARG LEO_VERSION=v3.3.1
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
 # Force rust to use external Git instead of the internal libgit wrapper
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
