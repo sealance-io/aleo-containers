@@ -37,7 +37,7 @@ This repository provides Docker containerization for the Aleo blockchain ecosyst
 ./build-publish-deployment-snapshot.sh --commit main --skip-push
 
 # Build deployment snapshot with custom versions for leo and snarkos
-./build-publish-deployment-snapshot.sh --version v3.4.0-v4.3.0
+./build-publish-deployment-snapshot.sh --version v3.4.0-v4.4.0
 ```
 
 ### Running Containers
@@ -86,7 +86,7 @@ All Dockerfiles use multi-stage builds:
 
 3. **aleo-devnet.Dockerfile**:
    - Stage 1 (`leo-builder`): Builds Leo v3 with devnet patch
-   - Stage 2 (`snarkos-builder`): Builds snarkOS v4.3.0
+   - Stage 2 (`snarkos-builder`): Builds snarkOS v4.4.0
    - Stage 3 (final): Combined runtime with pre-downloaded provers
 
 ### Critical Implementation Details
@@ -98,7 +98,7 @@ All Dockerfiles use multi-stage builds:
 **Version Dependencies**:
 - Leo v3+ requires Rust 1.90.0 (updated from 1.85.1)
 - Leo v3.4.0 and earlier use Rust 1.85.1
-- snarkOS v4.3.0 requires specific build features: `default,snarkos-node-metrics,test_network`
+- snarkOS v4.4.0 requires specific build features: `default,snarkos-node-metrics,test_network`
 
 **Docker Compose Network**: Uses fixed IP addressing (172.20.0.0/16) with:
 - validator0: 172.20.0.2 (verbose logging, REST disabled)
@@ -126,7 +126,7 @@ The `build-publish-deployment-snapshot.sh` script:
 # Override versions
 LEO_VERSION="v3.4.0" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 AMARELEO_VERSION="v2.5.0" ./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain
-LEO_VERSION="v3.4.0" SNARKOS_VERSION="v4.3.0" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
+LEO_VERSION="v3.4.0" SNARKOS_VERSION="v4.4.0" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 
 # Override repositories (for forks)
 LEO_REPO="https://github.com/your-fork/leo" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
