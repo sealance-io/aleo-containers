@@ -23,7 +23,7 @@ RUN apt-get update \
 WORKDIR /app
 
 # Clone repo and build Leo CLI
-RUN git clone -b "add_missing_unconfirmed_route_devnode" --recurse-submodules --single-branch --depth 1 "${LEO_REPO}"
+RUN git clone -b "feat/leo-devnode-final" --recurse-submodules --single-branch --depth 1 "${LEO_REPO}"
 
 WORKDIR /app/leo
 
