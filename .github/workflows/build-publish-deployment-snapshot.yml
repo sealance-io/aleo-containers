@@ -11,7 +11,7 @@ on:
       aleo-devnet-version:
         description: 'Version tag for aleo-devnet base image'
         required: false
-        default: 'v3.3.1-v4.3.0'
+        default: 'v3.4.0-v4.3.0'
         type: string
       image-name:
         description: 'Custom image name (without registry)'
@@ -43,7 +43,7 @@ on:
       aleo-devnet-version:
         description: 'Version tag for aleo-devnet base image'
         required: false
-        default: 'v3.3.1-v4.3.0'
+        default: 'v3.4.0-v4.3.0'
         type: string
       image-name:
         description: 'Custom image name (without registry)'
@@ -79,7 +79,7 @@ jobs:
       actions: read
     timeout-minutes: 180
     container:
-      image: ghcr.io/sealance-io/leo-lang-ci:v3.3.1
+      image: ghcr.io/sealance-io/leo-lang-ci:v3.4.0
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.github_token }}
