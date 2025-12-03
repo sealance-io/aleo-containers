@@ -3,7 +3,7 @@
 # Run: docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/data aleo-devnet
 
 # Build arguments
-ARG LEO_VERSION=v3.3.1
+ARG LEO_VERSION=v3.4.0
 ARG SNARKOS_VERSION=v4.3.0
 ARG RUST_VERSION=1.90.0
 
