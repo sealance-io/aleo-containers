@@ -370,26 +370,26 @@ fi
 print_success "Project compiled."
 
 # Wait for devnet to reach target consensus version
-print_step "Waiting for devnet to reach consensus version >= 10..."
+print_step "Waiting for devnet to reach consensus version >= 12..."
 RETRY_COUNT=0
 MAX_RETRIES=50
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     CONSENSUS_VERSION=$(curl -s "http://localhost:3030/testnet/consensus_version" 2>/dev/null || echo "")
-    if [ -n "$CONSENSUS_VERSION" ] && [ "$CONSENSUS_VERSION" -ge 10 ] 2>/dev/null; then
-        print_success "Devnet consensus version is $CONSENSUS_VERSION (>= 10)."
+    if [ -n "$CONSENSUS_VERSION" ] && [ "$CONSENSUS_VERSION" -ge 12 ] 2>/dev/null; then
+        print_success "Devnet consensus version is $CONSENSUS_VERSION (>= 12)."
         break
     fi
     if [ -z "$CONSENSUS_VERSION" ]; then
         print_warning "Waiting for consensus version response... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
     else
-        print_warning "Current consensus version: $CONSENSUS_VERSION, waiting for >= 10... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
+        print_warning "Current consensus version: $CONSENSUS_VERSION, waiting for >= 12... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
     fi
     sleep 5
     RETRY_COUNT=$((RETRY_COUNT + 1))
 done
 
 if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-    print_error "Devnet did not reach consensus version >= 10 after ${MAX_RETRIES} attempts."
+    print_error "Devnet did not reach consensus version >= 12 after ${MAX_RETRIES} attempts."
     print_warning "Container logs:"
     ${CONTAINER_TOOL} logs "${CONTAINER_NAME}" --tail 50 || true
     exit 1
