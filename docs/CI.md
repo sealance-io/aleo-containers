@@ -83,14 +83,14 @@ Build layers are cached in GitHub Container Registry instead of GitHub Actions c
 
 ```yaml
 cache-from: type=registry,ref=ghcr.io/sealance-io/leo-lang:cache-linux-amd64
-cache-to:   type=registry,ref=ghcr.io/sealance-io/leo-lang:cache-linux-amd64,mode=max
+cache-to:   type=registry,ref=ghcr.io/sealance-io/leo-lang:cache-linux-amd64,mode=min
 ```
 
 Benefits over GitHub Actions cache:
 - No 10GB size limit
 - Architecture-specific caches (no cross-arch pollution)
 - Longer retention
-- `mode=max` caches all intermediate layers
+- `mode=min` caches final image layers (faster export than `mode=max`)
 
 ### Push-by-Digest Pattern
 
