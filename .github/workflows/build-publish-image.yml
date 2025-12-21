@@ -121,10 +121,14 @@ jobs:
       project_repo_arg: ${{ steps.set-params.outputs.project_repo_arg }}
       project_version_arg: ${{ steps.set-params.outputs.project_version_arg }}
       uses_target: ${{ steps.set-params.outputs.uses_target }}
+      registry_image: ${{ steps.set-params.outputs.registry_image }}
     steps:
       - name: Set project-specific parameters
         id: set-params
         run: |
+          REGISTRY_IMAGE="${{ inputs.registry }}/${{ inputs.organization }}/${{ inputs.image_name }}"
+          echo "registry_image=${REGISTRY_IMAGE}" >> $GITHUB_OUTPUT
+
           if [[ "${{ inputs.image_name }}" == "leo-lang" ]]; then
             echo "project_repo_arg=LEO_REPO" >> $GITHUB_OUTPUT
             echo "project_version_arg=LEO_VERSION" >> $GITHUB_OUTPUT
@@ -149,17 +153,112 @@ jobs:
           echo "::error::CI image is not available for amareleo-chain"
           exit 1
 
+  # =============================================================================
+  # STANDARD IMAGE BUILDS - Parallel per-architecture using native runners
+  # =============================================================================
   build-standard:
     needs: [determine-params, validate-inputs]
+    if: inputs.build_standard
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            platform_pair: linux-amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            platform_pair: linux-arm64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ github.event_name == 'workflow_dispatch' && secrets.GITHUB_TOKEN || secrets.registry_token }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.determine-params.outputs.registry_image }}
+          tags: |
+            type=raw,value=${{ inputs.project_version }}
+
+      - name: Build and push by digest (Leo)
+        if: inputs.image_name == 'leo-lang'
+        id: build-leo
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ matrix.platform }}
+          target: leo
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
+            ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
+            NODE_VERSION=${{ inputs.node_version || '24' }}
+            DEBIAN_RELEASE=${{ inputs.debian_release }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}
+          cache-from: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }}
+          cache-to: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }},mode=max
+
+      - name: Build and push by digest (Amareleo)
+        if: inputs.image_name == 'amareleo-chain'
+        id: build-amareleo
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
+            ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
+            DEBIAN_RELEASE=${{ inputs.debian_release }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}
+          cache-from: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }}
+          cache-to: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }},mode=max
+
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          # Get digest from whichever build step ran
+          digest="${{ steps.build-leo.outputs.digest || steps.build-amareleo.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-standard-${{ matrix.platform_pair }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # =============================================================================
+  # MERGE STANDARD IMAGE - Creates multi-arch manifest from per-arch builds
+  # =============================================================================
+  merge-standard:
+    needs: [determine-params, build-standard]
     if: inputs.build_standard
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-standard-*
+          merge-multiple: true
 
       - name: Login to Container Registry
         uses: docker/login-action@v3
@@ -168,57 +267,46 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.event_name == 'workflow_dispatch' && secrets.GITHUB_TOKEN || secrets.registry_token }}
 
-      - name: Prepare Image Tags
-        id: prep
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.determine-params.outputs.registry_image }}
+          tags: |
+            type=raw,value=${{ inputs.project_version }}
+            type=raw,value=latest,enable=${{ inputs.tag_latest == true || inputs.tag_latest == 'true' }}
+
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
         run: |
-          FULL_IMAGE_NAME=${{ inputs.registry }}/${{ inputs.organization }}/${{ inputs.image_name }}
-          
-          # Set both version tag and latest tag if requested
-          TAGS="${FULL_IMAGE_NAME}:${{ inputs.project_version }}"
-          if [[ "${{ inputs.tag_latest }}" == "true" ]]; then
-            TAGS="${TAGS},${FULL_IMAGE_NAME}:latest"
-          fi
-          
-          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ needs.determine-params.outputs.registry_image }}@sha256:%s ' *)
 
-      - name: Build and Push Leo Standard
-        if: inputs.image_name == 'leo-lang'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ${{ inputs.dockerfile }}
-          push: true
-          tags: ${{ steps.prep.outputs.tags }}
-          target: leo
-          platforms: linux/amd64,linux/arm64
-          build-args: |
-            ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
-            ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
-            NODE_VERSION=${{ inputs.node_version || '24' }}
-            DEBIAN_RELEASE=${{ inputs.debian_release }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ needs.determine-params.outputs.registry_image }}:${{ inputs.project_version }}
 
-      - name: Build and Push Amareleo Standard
-        if: inputs.image_name == 'amareleo-chain'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ${{ inputs.dockerfile }}
-          push: true
-          tags: ${{ steps.prep.outputs.tags }}
-          platforms: linux/amd64,linux/arm64
-          build-args: |
-            ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
-            ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
-            DEBIAN_RELEASE=${{ inputs.debian_release }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
+  # =============================================================================
+  # CI IMAGE BUILDS - Parallel per-architecture using native runners (Leo only)
+  # =============================================================================
   build-ci:
     needs: [determine-params, validate-inputs]
     if: inputs.build_ci && inputs.image_name == 'leo-lang'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            platform_pair: linux-amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            platform_pair: linux-arm64
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Checkout code
@@ -234,32 +322,88 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.event_name == 'workflow_dispatch' && secrets.GITHUB_TOKEN || secrets.registry_token }}
 
-      - name: Prepare Image Tags
-        id: prep
-        run: |
-          FULL_IMAGE_NAME=${{ inputs.registry }}/${{ inputs.organization }}/${{ inputs.image_name }}-ci
-          
-          # Set both version tag and latest tag if requested
-          TAGS="${FULL_IMAGE_NAME}:${{ inputs.project_version }}"
-          if [[ "${{ inputs.tag_latest }}" == "true" ]]; then
-            TAGS="${TAGS},${FULL_IMAGE_NAME}:latest"
-          fi
-          
-          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.determine-params.outputs.registry_image }}-ci
+          tags: |
+            type=raw,value=${{ inputs.project_version }}
 
-      - name: Build and Push Leo CI
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ inputs.dockerfile }}
-          push: true
-          tags: ${{ steps.prep.outputs.tags }}
+          platforms: ${{ matrix.platform }}
           target: leo-ci
-          platforms: linux/amd64,linux/arm64
+          labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
             ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
             NODE_VERSION=${{ inputs.node_version || '24' }}
             DEBIAN_RELEASE=${{ inputs.debian_release }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}-ci
+          cache-from: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}-ci:cache-${{ matrix.platform_pair }}
+          cache-to: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}-ci:cache-${{ matrix.platform_pair }},mode=max
+
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-ci-${{ matrix.platform_pair }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # =============================================================================
+  # MERGE CI IMAGE - Creates multi-arch manifest from per-arch builds
+  # =============================================================================
+  merge-ci:
+    needs: [determine-params, build-ci]
+    if: inputs.build_ci && inputs.image_name == 'leo-lang'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-ci-*
+          merge-multiple: true
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ github.event_name == 'workflow_dispatch' && secrets.GITHUB_TOKEN || secrets.registry_token }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.determine-params.outputs.registry_image }}-ci
+          tags: |
+            type=raw,value=${{ inputs.project_version }}
+            type=raw,value=latest,enable=${{ inputs.tag_latest == true || inputs.tag_latest == 'true' }}
+
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ needs.determine-params.outputs.registry_image }}-ci@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ needs.determine-params.outputs.registry_image }}-ci:${{ inputs.project_version }}
