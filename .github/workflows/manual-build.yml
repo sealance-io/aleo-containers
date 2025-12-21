@@ -1,0 +1,70 @@
+name: Manual Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_name:
+        description: 'Image to build'
+        required: true
+        type: choice
+        options:
+          - leo-lang
+          - aleo-devnet
+      project_version:
+        description: 'Version (e.g., v3.4.0 for leo-lang, or v3.4.0-v4.4.0 for aleo-devnet)'
+        required: true
+        type: string
+      build_standard:
+        description: 'Build standard image'
+        type: boolean
+        default: true
+      build_ci:
+        description: 'Build CI image (leo-lang only)'
+        type: boolean
+        default: false
+      tag_latest:
+        description: 'Tag as latest'
+        type: boolean
+        default: false
+      snarkos_version:
+        description: 'snarkOS version (aleo-devnet only, default: v4.4.0)'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  derive-params:
+    runs-on: ubuntu-latest
+    outputs:
+      dockerfile: ${{ steps.derive.outputs.dockerfile }}
+      snarkos_version: ${{ steps.derive.outputs.snarkos_version }}
+    steps:
+      - name: Derive parameters from image name
+        id: derive
+        run: |
+          if [[ "${{ inputs.image_name }}" == "leo-lang" ]]; then
+            echo "dockerfile=leo.Dockerfile" >> $GITHUB_OUTPUT
+          elif [[ "${{ inputs.image_name }}" == "aleo-devnet" ]]; then
+            echo "dockerfile=aleo-devnet.Dockerfile" >> $GITHUB_OUTPUT
+          fi
+
+          # Use provided snarkos_version or default
+          SNARKOS="${{ inputs.snarkos_version }}"
+          echo "snarkos_version=${SNARKOS:-v4.4.0}" >> $GITHUB_OUTPUT
+
+  build:
+    needs: derive-params
+    uses: ./.github/workflows/build-publish-image.yml
+    with:
+      image_name: ${{ inputs.image_name }}
+      dockerfile: ${{ needs.derive-params.outputs.dockerfile }}
+      project_version: ${{ inputs.project_version }}
+      build_standard: ${{ inputs.build_standard }}
+      build_ci: ${{ inputs.build_ci }}
+      tag_latest: ${{ inputs.tag_latest }}
+      snarkos_version: ${{ needs.derive-params.outputs.snarkos_version }}
+    secrets:
+      registry_token: ${{ secrets.GITHUB_TOKEN }}

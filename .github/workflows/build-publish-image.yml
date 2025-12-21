@@ -1,10 +1,11 @@
 name: Build and Publish Docker Images
 
+# Reusable workflow - use manual-build.yml for workflow_dispatch
 on:
   workflow_call:
     inputs:
       image_name:
-        description: 'Name of the image to build (e.g., leo-lang, aleo-devnet)'
+        description: 'Name of the image to build (leo-lang or aleo-devnet)'
         required: true
         type: string
       dockerfile:
@@ -68,65 +69,6 @@ on:
       registry_token:
         description: 'Token for container registry authentication'
         required: true
-
-  workflow_dispatch:
-    inputs:
-      image_name:
-        description: 'Name of the image to build (e.g., leo-lang, aleo-devnet)'
-        required: true
-        type: string
-      dockerfile:
-        description: 'Path to the Dockerfile'
-        required: true
-        type: string
-      build_standard:
-        description: 'Build standard image'
-        required: false
-        default: 'true'
-        type: string
-      build_ci:
-        description: 'Build CI image (only applicable for leo-lang)'
-        required: false
-        default: 'false'
-        type: string
-      tag_latest:
-        description: 'Tag as latest'
-        required: false
-        default: 'false'
-        type: string
-      registry:
-        description: 'Container registry'
-        required: false
-        default: 'ghcr.io'
-        type: string
-      organization:
-        description: 'Organization in the registry'
-        required: false
-        default: 'sealance-io'
-        type: string
-      project_version:
-        description: 'Project version to build (e.g., v3.4.0)'
-        required: true
-        type: string
-      project_repo:
-        description: 'Project repository URL'
-        required: false
-        type: string
-      debian_release:
-        description: 'Debian release to use'
-        required: false
-        default: 'trixie'
-        type: string
-      snarkos_version:
-        description: 'snarkOS version for aleo-devnet'
-        required: false
-        default: 'v4.4.0'
-        type: string
-      rust_version:
-        description: 'Rust version for aleo-devnet'
-        required: false
-        default: '1.90.0'
-        type: string
 
 # Permissions required by callers
 permissions:
@@ -202,7 +144,7 @@ jobs:
         with:
           registry: ${{ inputs.registry }}
           username: ${{ github.actor }}
-          password: ${{ github.event_name == 'workflow_dispatch' && secrets.GITHUB_TOKEN || secrets.registry_token }}
+          password: ${{ secrets.registry_token }}
 
       - name: Docker meta
         id: meta
@@ -284,7 +226,7 @@ jobs:
         with:
           registry: ${{ inputs.registry }}
           username: ${{ github.actor }}
-          password: ${{ github.event_name == 'workflow_dispatch' && secrets.GITHUB_TOKEN || secrets.registry_token }}
+          password: ${{ secrets.registry_token }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -339,7 +281,7 @@ jobs:
         with:
           registry: ${{ inputs.registry }}
           username: ${{ github.actor }}
-          password: ${{ github.event_name == 'workflow_dispatch' && secrets.GITHUB_TOKEN || secrets.registry_token }}
+          password: ${{ secrets.registry_token }}
 
       - name: Docker meta
         id: meta
@@ -402,7 +344,7 @@ jobs:
         with:
           registry: ${{ inputs.registry }}
           username: ${{ github.actor }}
-          password: ${{ github.event_name == 'workflow_dispatch' && secrets.GITHUB_TOKEN || secrets.registry_token }}
+          password: ${{ secrets.registry_token }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
