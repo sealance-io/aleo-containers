@@ -14,20 +14,20 @@ A weekly workflow checks for new releases of Leo:
 
 ## Build Workflows
 
-The build system consists of four primary workflows:
+The build system consists of these primary workflows:
 
 1. **Reusable Build Workflow** (`build-publish-image.yml`)
    - Core functionality for building and pushing images
    - Handles multi-architecture builds (AMD64/ARM64)
-   - Configurable through parameters
+   - Called by other workflows via `workflow_call`
 
-2. **Callable Interface** (`build-images.yml`)
-   - Entry point for manual builds and automated triggers
-   - Validates input parameters
-   - Provides a user-friendly interface
+2. **Manual Build Workflow** (`manual-build.yml`)
+   - Entry point for manual builds via GitHub UI or `gh` CLI
+   - Derives parameters (dockerfile, version tags) from minimal inputs
+   - Calls the reusable build workflow
 
 3. **Update Detection** (`check-updates.yml`)
-   - Monitors upstream repositories for new versions
+   - Monitors upstream Leo repository for new versions
    - Applies semantic versioning filters
    - Triggers builds for new releases
 
@@ -36,6 +36,71 @@ The build system consists of four primary workflows:
    - Clones and deploys programs from compliant-transfer-aleo repository
    - Captures blockchain state after deployment
    - Builds multi-architecture images with the deployed state
+
+## Build Optimizations
+
+The CI pipeline includes several optimizations to reduce build times from 4-6 hours to ~45-50 minutes:
+
+### Native ARM64 Runners (No QEMU Emulation)
+
+Multi-arch builds use **native runners per architecture** instead of QEMU emulation:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    build-standard job                        │
+├─────────────────────────────────────────────────────────────┤
+│  Matrix:                                                     │
+│    ├── linux/amd64 → ubuntu-24.04      (native x86_64)      │
+│    └── linux/arm64 → ubuntu-24.04-arm  (native ARM64)       │
+│                                                              │
+│  Both run in PARALLEL, then merge into multi-arch manifest  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+QEMU emulation is 10-20x slower for Rust compilation. Native runners eliminate this bottleneck.
+
+### Cargo-Chef Dependency Caching
+
+Dockerfiles use [cargo-chef](https://github.com/LukeMathWalker/cargo-chef) to separate dependency compilation from source compilation:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  planner stage:  Generate recipe.json from Cargo.toml/lock │
+│       ↓                                                      │
+│  builder stage:  cargo chef cook (compile deps) ← CACHED    │
+│       ↓                                                      │
+│  builder stage:  cargo build (compile source)  ← Fast       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+When only source code changes (not dependencies), the expensive dependency compilation layer is reused from cache.
+
+### Registry-Based Layer Caching
+
+Build layers are cached in GitHub Container Registry instead of GitHub Actions cache:
+
+```yaml
+cache-from: type=registry,ref=ghcr.io/sealance-io/leo-lang:cache-linux-amd64
+cache-to:   type=registry,ref=ghcr.io/sealance-io/leo-lang:cache-linux-amd64,mode=max
+```
+
+Benefits over GitHub Actions cache:
+- No 10GB size limit
+- Architecture-specific caches (no cross-arch pollution)
+- Longer retention
+- `mode=max` caches all intermediate layers
+
+### Push-by-Digest Pattern
+
+Each architecture builds and pushes by content digest, then a merge job creates the multi-arch manifest:
+
+```
+build-standard (amd64) ──→ push @sha256:abc...  ─┐
+                                                  ├─→ merge-standard ──→ tag: v3.4.0
+build-standard (arm64) ──→ push @sha256:def...  ─┘
+```
+
+This enables parallel builds without manifest conflicts.
 
 ## Manual Builds
 
