@@ -65,6 +65,10 @@ on:
         required: false
         default: '1.90.0'
         type: string
+      leo_version:
+        description: 'Leo version for aleo-devnet (if different from project_version)'
+        required: false
+        type: string
     secrets:
       registry_token:
         description: 'Token for container registry authentication'
@@ -109,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate CI image compatibility
-        if: inputs.image_name == 'aleo-devnet' && inputs.build_ci == 'true'
+        if: inputs.image_name == 'aleo-devnet' && inputs.build_ci
         run: |
           echo "::error::CI image is not available for aleo-devnet"
           exit 1
@@ -183,7 +187,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            LEO_VERSION=${{ inputs.project_version }}
+            LEO_VERSION=${{ inputs.leo_version || 'v3.4.0' }}
             SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.4.0' }}
             RUST_VERSION=${{ inputs.rust_version || '1.90.0' }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}
@@ -238,7 +242,7 @@ jobs:
           images: ${{ needs.determine-params.outputs.registry_image }}
           tags: |
             type=raw,value=${{ inputs.project_version }}
-            type=raw,value=latest,enable=${{ inputs.tag_latest == true || inputs.tag_latest == 'true' }}
+            type=raw,value=latest,enable=${{ inputs.tag_latest }}
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
@@ -356,7 +360,7 @@ jobs:
           images: ${{ needs.determine-params.outputs.registry_image }}-ci
           tags: |
             type=raw,value=${{ inputs.project_version }}
-            type=raw,value=latest,enable=${{ inputs.tag_latest == true || inputs.tag_latest == 'true' }}
+            type=raw,value=latest,enable=${{ inputs.tag_latest }}
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests

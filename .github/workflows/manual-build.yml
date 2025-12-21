@@ -10,10 +10,16 @@ on:
         options:
           - leo-lang
           - aleo-devnet
-      project_version:
-        description: 'Version (e.g., v3.4.0 for leo-lang, or v3.4.0-v4.4.0 for aleo-devnet)'
+      leo_version:
+        description: 'Leo version (e.g., v3.4.0)'
         required: true
         type: string
+        default: 'v3.4.0'
+      snarkos_version:
+        description: 'snarkOS version (aleo-devnet only)'
+        type: string
+        default: 'v4.4.0'
+        required: false
       build_standard:
         description: 'Build standard image'
         type: boolean
@@ -26,10 +32,6 @@ on:
         description: 'Tag as latest'
         type: boolean
         default: false
-      snarkos_version:
-        description: 'snarkOS version (aleo-devnet only, default: v4.4.0)'
-        type: string
-        required: false
 
 permissions:
   contents: read
@@ -40,20 +42,27 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       dockerfile: ${{ steps.derive.outputs.dockerfile }}
+      project_version: ${{ steps.derive.outputs.project_version }}
       snarkos_version: ${{ steps.derive.outputs.snarkos_version }}
     steps:
       - name: Derive parameters from image name
         id: derive
         run: |
+          LEO_VERSION="${{ inputs.leo_version }}"
+          SNARKOS_VERSION="${{ inputs.snarkos_version }}"
+          SNARKOS_VERSION="${SNARKOS_VERSION:-v4.4.0}"
+
           if [[ "${{ inputs.image_name }}" == "leo-lang" ]]; then
             echo "dockerfile=leo.Dockerfile" >> $GITHUB_OUTPUT
+            # For leo-lang, project_version is just the Leo version
+            echo "project_version=${LEO_VERSION}" >> $GITHUB_OUTPUT
           elif [[ "${{ inputs.image_name }}" == "aleo-devnet" ]]; then
             echo "dockerfile=aleo-devnet.Dockerfile" >> $GITHUB_OUTPUT
+            # For aleo-devnet, project_version is combined: v3.4.0-v4.4.0
+            echo "project_version=${LEO_VERSION}-${SNARKOS_VERSION}" >> $GITHUB_OUTPUT
           fi
 
-          # Use provided snarkos_version or default
-          SNARKOS="${{ inputs.snarkos_version }}"
-          echo "snarkos_version=${SNARKOS:-v4.4.0}" >> $GITHUB_OUTPUT
+          echo "snarkos_version=${SNARKOS_VERSION}" >> $GITHUB_OUTPUT
 
   build:
     needs: derive-params
@@ -61,10 +70,11 @@ jobs:
     with:
       image_name: ${{ inputs.image_name }}
       dockerfile: ${{ needs.derive-params.outputs.dockerfile }}
-      project_version: ${{ inputs.project_version }}
+      project_version: ${{ needs.derive-params.outputs.project_version }}
+      leo_version: ${{ inputs.leo_version }}
+      snarkos_version: ${{ needs.derive-params.outputs.snarkos_version }}
       build_standard: ${{ inputs.build_standard }}
       build_ci: ${{ inputs.build_ci }}
       tag_latest: ${{ inputs.tag_latest }}
-      snarkos_version: ${{ needs.derive-params.outputs.snarkos_version }}
     secrets:
       registry_token: ${{ secrets.GITHUB_TOKEN }}
