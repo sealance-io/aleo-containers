@@ -125,10 +125,10 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
-            runner: ubuntu-24.04
+            runner: ubuntu-24.04 # Doesn't use ubuntu-latest for consistency
             platform_pair: linux-amd64
           - platform: linux/arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-24.04-arm # There's no ubuntu-latest-arm alias
             platform_pair: linux-arm64
     runs-on: ${{ matrix.runner }}
 
@@ -262,11 +262,11 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
-            runner: ubuntu-24.04
+            runner: ubuntu-24.04 # Doesn't use ubuntu-latest for consistency
             platform_pair: linux-amd64
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
-            platform_pair: linux-arm64
+            platform_pair: linux-arm64 # There's no ubuntu-latest-arm alias
     runs-on: ${{ matrix.runner }}
 
     steps:
