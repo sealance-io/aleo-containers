@@ -51,7 +51,7 @@ You can also use the `latest` tag to always get the most recent version.
 - GitHub Actions workspace setup
 
 #### Aleo Devnet Image (`aleo-devnet`)
-- Leo CLI v3.4.0 (with devnet patch for non-interactive mode)
+- Leo CLI v3.4.0
 - snarkOS v4.4.0
 - Pre-downloaded mainnet prover parameters (~2GB)
 - Debian trixie (slim)

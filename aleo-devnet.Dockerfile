@@ -8,27 +8,7 @@ ARG SNARKOS_VERSION=v4.4.0
 ARG RUST_VERSION=1.90.0
 
 # =============================================================================
-# Stage 0a: Leo Planner - Generate cargo-chef recipe for Leo dependency caching
-# =============================================================================
-FROM rust:${RUST_VERSION}-trixie AS leo-planner
-
-ARG LEO_VERSION
-
-# Install cargo-chef and git
-RUN cargo install cargo-chef \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /build
-ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
-RUN git clone --branch ${LEO_VERSION} --depth 1 https://github.com/ProvableHQ/leo.git
-
-WORKDIR /build/leo
-RUN cargo chef prepare --recipe-path recipe.json
-
-# =============================================================================
-# Stage 0b: snarkOS Planner - Generate cargo-chef recipe for snarkOS dependency caching
+# Stage 0: snarkOS Planner - Generate cargo-chef recipe for dependency caching
 # =============================================================================
 FROM rust:${RUST_VERSION}-trixie AS snarkos-planner
 
@@ -48,43 +28,7 @@ WORKDIR /build/snarkOS
 RUN cargo chef prepare --recipe-path recipe.json
 
 # =============================================================================
-# Stage 1: Build Leo CLI - Dependencies cached via cargo-chef
-# =============================================================================
-FROM rust:${RUST_VERSION}-trixie AS leo-builder
-
-ARG LEO_VERSION
-
-# Install cargo-chef and build dependencies
-RUN cargo install cargo-chef \
-    && apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    libssl-dev \
-    pkg-config \
-    patch \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /build
-ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
-
-# Copy recipe from planner and cook dependencies (this layer is cached!)
-COPY --from=leo-planner /build/leo/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json
-
-# Clone and build Leo - dependencies already compiled
-# Clone to /src to avoid conflict with cargo chef's generated structure
-RUN git clone --branch ${LEO_VERSION} --depth 1 https://github.com/ProvableHQ/leo.git /src/leo
-
-WORKDIR /src/leo
-
-# Build Leo in release mode with default features from repository
-RUN cargo build --release --locked && \
-    mv target/release/leo /tmp/leo && \
-    strip /tmp/leo
-
-# =============================================================================
-# Stage 2: Build snarkOS - Dependencies cached via cargo-chef
+# Stage 1: Build snarkOS - Dependencies cached via cargo-chef
 # =============================================================================
 FROM rust:${RUST_VERSION}-trixie AS snarkos-builder
 
@@ -129,9 +73,11 @@ RUN cargo build --release --locked \
     strip /tmp/snarkos
 
 # =============================================================================
-# Stage 3: Final runtime image
+# Stage 2: Final runtime image
 # =============================================================================
 FROM debian:trixie-slim
+
+ARG LEO_VERSION
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -147,8 +93,10 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /aleo
 
-# Copy binaries from builders
-COPY --from=leo-builder /tmp/leo /usr/local/bin/leo
+# Copy Leo binary from pre-built image
+COPY --from=ghcr.io/sealance-io/leo-lang:${LEO_VERSION} /usr/local/bin/leo /usr/local/bin/leo
+
+# Copy snarkOS binary from builder
 COPY --from=snarkos-builder /tmp/snarkos /aleo/snarkos
 
 # Make binaries executable
@@ -191,7 +139,7 @@ ENTRYPOINT ["/usr/local/bin/leo"]
 # Default command runs a minimal devnet
 # --storage: Use /data for blockchain storage
 # --clear-storage: Clean start each time
-# --yes: Auto-confirm prompts (now respected due to patch)
+# --yes: Auto-confirm prompts
 # --verbosity 4: Maximum debug output
 # --snarkos: Use our pre-built binary
 # --num-clients: Single client for minimal setup
