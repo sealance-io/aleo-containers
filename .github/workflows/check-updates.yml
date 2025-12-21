@@ -119,24 +119,23 @@ jobs:
           script: |
             const tags = '${{ steps.check-leo.outputs.new_tags }}'.split(',');
             const latestVersion = '${{ steps.check-leo.outputs.latest_version }}';
-            
+
             for (const tag of tags) {
               // Determine if this is the latest version
               const isLatest = tag === latestVersion;
               console.log(`Triggering build for Leo tag: ${tag} (Latest: ${isLatest})`);
-              
+
               await github.rest.actions.createWorkflowDispatch({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                workflow_id: 'build-publish-image.yml',
+                workflow_id: 'manual-build.yml',
                 ref: 'main',
                 inputs: {
                   image_name: 'leo-lang',
-                  dockerfile: 'leo.Dockerfile',
-                  build_standard: 'true',
-                  build_ci: 'true',
-                  tag_latest: isLatest ? 'true' : 'false',
-                  project_version: tag
+                  leo_version: tag,
+                  build_standard: true,
+                  build_ci: true,
+                  tag_latest: isLatest
                 }
               });
             }
@@ -146,28 +145,27 @@ jobs:
         if: steps.detect_act.outputs.testing_mode == 'true'
         run: |
           echo "===== Mock Triggers for Act Testing ====="
-          
+
           # Process Leo triggers
           if [ -n "${{ steps.check-leo.outputs.new_tags }}" ]; then
             echo "Leo tags to build: ${{ steps.check-leo.outputs.new_tags }}"
             echo "Leo latest version: ${{ steps.check-leo.outputs.latest_version }}"
-            
+
             IFS=',' read -ra TAGS <<< "${{ steps.check-leo.outputs.new_tags }}"
             LATEST="${{ steps.check-leo.outputs.latest_version }}"
-            
+
             for TAG in "${TAGS[@]}"; do
               IS_LATEST="false"
               if [ "$TAG" = "$LATEST" ]; then
                 IS_LATEST="true"
               fi
-              
-              echo "Would trigger: build-publish-image.yml for Leo with:"
+
+              echo "Would trigger: manual-build.yml for Leo with:"
               echo "  - image_name: leo-lang"
-              echo "  - dockerfile: leo.Dockerfile" 
+              echo "  - leo_version: $TAG"
               echo "  - build_standard: true"
               echo "  - build_ci: true"
               echo "  - tag_latest: $IS_LATEST"
-              echo "  - project_version: $TAG"
               echo ""
             done
           else
