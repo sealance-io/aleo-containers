@@ -1,8 +1,6 @@
 name: Manual Build
 
 on:
-  push:  # temporary - remove after first run
-    branches: [or/optimize_image_builds]
   workflow_dispatch:
     inputs:
       image_name:
