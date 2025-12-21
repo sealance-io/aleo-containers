@@ -79,9 +79,10 @@ All Dockerfiles use multi-stage builds:
    - Stage 3 (`leo-ci`): Full CI environment with Rust, Docker, Git
 
 2. **aleo-devnet.Dockerfile**:
-   - Stage 0 (`snarkos-planner`): Generates cargo-chef recipe for snarkOS dependency caching
-   - Stage 1 (`snarkos-builder`): Builds snarkOS with test_network feature and cached dependencies
-   - Stage 2 (final): Copies Leo from pre-built `leo-lang` image, adds snarkOS and pre-downloaded provers
+   - Stage 0 (`leo-image`): References pre-built `leo-lang` image (ARG workaround for COPY --from)
+   - Stage 1 (`snarkos-planner`): Generates cargo-chef recipe for snarkOS dependency caching
+   - Stage 2 (`snarkos-builder`): Builds snarkOS with test_network feature and cached dependencies
+   - Stage 3 (final): Copies Leo from `leo-image`, adds snarkOS and pre-downloaded provers
 
 ### Critical Implementation Details
 

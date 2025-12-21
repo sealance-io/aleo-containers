@@ -8,7 +8,12 @@ ARG SNARKOS_VERSION=v4.4.0
 ARG RUST_VERSION=1.90.0
 
 # =============================================================================
-# Stage 0: snarkOS Planner - Generate cargo-chef recipe for dependency caching
+# Stage 0: Leo image reference (workaround for --from not supporting ARG)
+# =============================================================================
+FROM ghcr.io/sealance-io/leo-lang:${LEO_VERSION} AS leo-image
+
+# =============================================================================
+# Stage 1: snarkOS Planner - Generate cargo-chef recipe for dependency caching
 # =============================================================================
 FROM rust:${RUST_VERSION}-trixie AS snarkos-planner
 
@@ -28,7 +33,7 @@ WORKDIR /build/snarkOS
 RUN cargo chef prepare --recipe-path recipe.json
 
 # =============================================================================
-# Stage 1: Build snarkOS - Dependencies cached via cargo-chef
+# Stage 2: Build snarkOS - Dependencies cached via cargo-chef
 # =============================================================================
 FROM rust:${RUST_VERSION}-trixie AS snarkos-builder
 
@@ -73,11 +78,9 @@ RUN cargo build --release --locked \
     strip /tmp/snarkos
 
 # =============================================================================
-# Stage 2: Final runtime image
+# Stage 3: Final runtime image
 # =============================================================================
 FROM debian:trixie-slim
-
-ARG LEO_VERSION
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -94,7 +97,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /aleo
 
 # Copy Leo binary from pre-built image
-COPY --from=ghcr.io/sealance-io/leo-lang:${LEO_VERSION} /usr/local/bin/leo /usr/local/bin/leo
+COPY --from=leo-image /usr/local/bin/leo /usr/local/bin/leo
 
 # Copy snarkOS binary from builder
 COPY --from=snarkos-builder /tmp/snarkos /aleo/snarkos
