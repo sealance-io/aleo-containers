@@ -214,18 +214,6 @@ if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
   PROJECT_VERSION_ARG="LEO_VERSION"
   PROJECT_REPO=${LEO_REPO:-"https://github.com/ProvableHQ/leo"}
   PROJECT_REPO_ARG="LEO_REPO"
-elif [[ "$IMAGE_NAME" == "amareleo-chain" ]]; then
-  # Amareleo-chain doesn't support CI image
-  if [[ "$BUILD_CI" == "true" ]]; then
-    echo "Error: CI image is not available for amareleo-chain"
-    echo "Use --standard instead of --ci or --both"
-    exit 1
-  fi
-  
-  PROJECT_VERSION=${AMARELEO_VERSION:-"v2.5.0"}
-  PROJECT_VERSION_ARG="AMARELEO_VERSION"
-  PROJECT_REPO=${AMARELEO_REPO:-"https://github.com/kaxxa123/amareleo-chain"}
-  PROJECT_REPO_ARG="AMARELEO_REPO"
 elif [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
   # Aleo-devnet doesn't support CI image
   if [[ "$BUILD_CI" == "true" ]]; then
@@ -447,7 +435,7 @@ if [[ "$BUILD_STANDARD" == "true" ]]; then
   if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
     build_and_push "leo" ""
   else
-    build_and_push "" ""  # No target for amareleo-chain
+    build_and_push "" ""  # No target for aleo-devnet
   fi
 fi
 
