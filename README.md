@@ -3,7 +3,6 @@
 This repository provides Docker images for Aleo blockchain tooling:
 
 - **Leo Lang Images**: The Leo programming language CLI tool designed for building and running zero-knowledge applications
-- **Amareleo Chain Images**: The Amareleo blockchain node implementation
 - **Aleo Devnet Image**: Integrated development environment with Leo v3 and snarkOS for running local test networks
 
 Image variants available:
@@ -23,9 +22,6 @@ Pre-built images are available on GitHub Container Registry:
 #### Leo Lang
 - **Standard**: `ghcr.io/sealance-io/leo-lang:v3.4.0`
 - **CI**: `ghcr.io/sealance-io/leo-lang-ci:v3.4.0`
-
-#### Amareleo Chain
-- **Standard**: `ghcr.io/sealance-io/amareleo-chain:v2.5.0`
 
 #### Aleo Devnet
 - **Integrated**: `ghcr.io/sealance-io/aleo-devnet:v3.4.0-v4.4.0`
@@ -53,12 +49,6 @@ You can also use the `latest` tag to always get the most recent version.
 - Debian trixie (full)
 - Development libraries
 - GitHub Actions workspace setup
-
-#### Amareleo Chain Standard Image (`amareleo-chain`)
-- Amareleo Chain v2.5.0
-- Debian trixie (slim)
-- Essential SSL libraries
-- Running as non-root user
 
 #### Aleo Devnet Image (`aleo-devnet`)
 - Leo CLI v3.4.0 (with devnet patch for non-interactive mode)
@@ -112,23 +102,6 @@ docker run --rm -it \
   -v $(pwd):/app \
   ghcr.io/sealance-io/leo-lang-ci:v2.5.0 \
   bash -c "cd /app && cargo build"
-```
-
-### Amareleo Chain Standard Image
-
-For running an Amareleo blockchain node:
-
-```bash
-# Run node with default settings
-docker run -d -p 3030:3030 -p 9000:9000 \
-  -v $(pwd)/data:/data/amareleo \
-  ghcr.io/sealance-io/amareleo-chain:v2.5.0
-
-# Run with custom parameters
-docker run -d -p 3030:3030 -p 9000:9000 \
-  -v $(pwd)/data:/data/amareleo \
-  ghcr.io/sealance-io/amareleo-chain:v2.5.0 \
-  start --network 2 --verbosity 2 --rest 0.0.0.0:3030
 ```
 
 ### Aleo Devnet Image
@@ -196,7 +169,6 @@ The project consists of the following files:
 ├── build-publish-image.sh               # Build script for creating and publishing images
 ├── build-publish-deployment-snapshot.sh # Build script for deployment snapshots
 ├── leo.Dockerfile                       # Multi-stage Dockerfile for Leo Lang
-├── amareleo.Dockerfile                  # Multi-stage Dockerfile for Amareleo Chain
 ├── aleo-devnet.Dockerfile               # Multi-stage Dockerfile for Aleo Devnet (Leo + snarkOS)
 ├── docker-compose.yaml                  # Docker Compose setup for local testnet
 ├── download-provers.sh                  # Script to download Aleo prover parameters
@@ -212,7 +184,7 @@ The build script automatically:
 ## 🔄 CI/CD Automation
 
 This repository includes automated workflows for building and publishing images, including:
-- Automated version detection and builds for Leo and Amareleo
+- Automated version detection and builds for Leo
 - Manual build triggers through GitHub Actions
 - Deployment snapshot creation for custom Aleo programs
 
@@ -269,9 +241,6 @@ cat ~/.github/token | docker login ghcr.io --username USERNAME --password-stdin
 # Build both Leo Lang variants
 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --both
 
-# Build standard Amareleo Chain image
-./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain
-
 # Build Aleo Devnet image (Leo v3 + snarkOS)
 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 
@@ -290,7 +259,6 @@ cat ~/.github/token | docker login ghcr.io --username USERNAME --password-stdin
 # Build with custom variant suffix
 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --variant node24
 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --ci --variant node24
-./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain --variant experimental
 
 # Get help
 ./build-publish-image.sh --help
@@ -350,10 +318,6 @@ NODE_VERSION=24 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-nam
 NODE_VERSION=24 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --ci --variant node24
 # Produces: leo-lang-ci:v3.4.0-node24, leo-lang-ci:latest
 
-# Build experimental Amareleo
-./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain --variant experimental
-# Produces: amareleo-chain:v2.5.0-experimental, amareleo-chain:latest
-
 # Build with custom Rust version
 RUST_VERSION=1.89.0 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet --variant rust189
 # Produces: aleo-devnet:v3.4.0-v4.4.0-rust189, aleo-devnet:latest
@@ -369,12 +333,6 @@ LEO_VERSION="v3.4.0" ./build-publish-image.sh --dockerfile leo.Dockerfile --imag
 
 # Override Leo repository URL
 LEO_REPO="https://github.com/your-fork/leo" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
-
-# Override Amareleo version
-AMARELEO_VERSION="v2.5.0" ./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain
-
-# Override Amareleo repository URL
-AMARELEO_REPO="https://github.com/your-fork/amareleo-chain" ./build-publish-image.sh --dockerfile amareleo.Dockerfile --image-name amareleo-chain
 
 # Override Aleo Devnet versions (Leo and snarkOS)
 LEO_VERSION="v3.4.0" SNARKOS_VERSION="v4.4.0" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet

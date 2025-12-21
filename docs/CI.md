@@ -4,13 +4,11 @@ This repository uses GitHub Actions to automate the building and publishing of D
 
 ## Automated Version Detection
 
-A weekly workflow checks for new releases of Leo and Amareleo Chain:
+A weekly workflow checks for new releases of Leo:
 
 - Runs every Monday at 2:30 AM UTC
-- Scans both upstream repositories for new release tags
-- Only processes versions that meet minimum requirements:
-  - Leo: v2.4.1 or higher
-  - Amareleo Chain: v2.1.0 or higher
+- Scans the upstream Leo repository for new release tags
+- Only processes versions that meet minimum requirements (Leo: v2.4.1 or higher)
 - Compares against existing images in the registry to avoid rebuilding
 - Automatically triggers builds for new versions
 
@@ -49,7 +47,7 @@ You can manually trigger builds through the GitHub Actions interface:
 2. Select the "Build Docker Images" workflow
 3. Click "Run workflow"
 4. Fill in the required parameters:
-   - Image name (`leo-lang` or `amareleo-chain`)
+   - Image name (`leo-lang` or `aleo-devnet`)
    - Version tag
    - Other optional settings
 

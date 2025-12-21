@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       image_name:
-        description: 'Name of the image to build (e.g., leo-lang, amareleo-chain)'
+        description: 'Name of the image to build (e.g., leo-lang, aleo-devnet)'
         required: true
         type: string
       dockerfile:
@@ -37,7 +37,7 @@ on:
         default: 'sealance-io'
         type: string
       project_version:
-        description: 'Project version to build (e.g., v2.5.0)'
+        description: 'Project version to build (e.g., v3.4.0)'
         required: true
         type: string
       project_repo:
@@ -54,6 +54,16 @@ on:
         required: false
         default: 'trixie'
         type: string
+      snarkos_version:
+        description: 'snarkOS version for aleo-devnet'
+        required: false
+        default: 'v4.4.0'
+        type: string
+      rust_version:
+        description: 'Rust version for aleo-devnet'
+        required: false
+        default: '1.90.0'
+        type: string
     secrets:
       registry_token:
         description: 'Token for container registry authentication'
@@ -62,7 +72,7 @@ on:
   workflow_dispatch:
     inputs:
       image_name:
-        description: 'Name of the image to build (e.g., leo-lang, amareleo-chain)'
+        description: 'Name of the image to build (e.g., leo-lang, aleo-devnet)'
         required: true
         type: string
       dockerfile:
@@ -95,7 +105,7 @@ on:
         default: 'sealance-io'
         type: string
       project_version:
-        description: 'Project version to build (e.g., v2.5.0)'
+        description: 'Project version to build (e.g., v3.4.0)'
         required: true
         type: string
       project_repo:
@@ -106,6 +116,16 @@ on:
         description: 'Debian release to use'
         required: false
         default: 'trixie'
+        type: string
+      snarkos_version:
+        description: 'snarkOS version for aleo-devnet'
+        required: false
+        default: 'v4.4.0'
+        type: string
+      rust_version:
+        description: 'Rust version for aleo-devnet'
+        required: false
+        default: '1.90.0'
         type: string
 
 # Permissions required by callers
@@ -134,10 +154,9 @@ jobs:
             echo "project_version_arg=LEO_VERSION" >> $GITHUB_OUTPUT
             echo "project_repo=${{ inputs.project_repo || 'https://github.com/ProvableHQ/leo' }}" >> $GITHUB_OUTPUT
             echo "uses_target=true" >> $GITHUB_OUTPUT
-          elif [[ "${{ inputs.image_name }}" == "amareleo-chain" ]]; then
-            echo "project_repo_arg=AMARELEO_REPO" >> $GITHUB_OUTPUT
-            echo "project_version_arg=AMARELEO_VERSION" >> $GITHUB_OUTPUT
-            echo "project_repo=${{ inputs.project_repo || 'https://github.com/kaxxa123/amareleo-chain' }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ inputs.image_name }}" == "aleo-devnet" ]]; then
+            echo "project_version_arg=LEO_VERSION" >> $GITHUB_OUTPUT
+            echo "project_repo=" >> $GITHUB_OUTPUT
             echo "uses_target=false" >> $GITHUB_OUTPUT
           else
             echo "::error::Unknown image name: ${{ inputs.image_name }}"
@@ -148,9 +167,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate CI image compatibility
-        if: inputs.image_name == 'amareleo-chain' && inputs.build_ci == 'true'
+        if: inputs.image_name == 'aleo-devnet' && inputs.build_ci == 'true'
         run: |
-          echo "::error::CI image is not available for amareleo-chain"
+          echo "::error::CI image is not available for aleo-devnet"
           exit 1
 
   # =============================================================================
@@ -212,9 +231,9 @@ jobs:
           cache-from: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }}
           cache-to: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }},mode=max
 
-      - name: Build and push by digest (Amareleo)
-        if: inputs.image_name == 'amareleo-chain'
-        id: build-amareleo
+      - name: Build and push by digest (Aleo Devnet)
+        if: inputs.image_name == 'aleo-devnet'
+        id: build-devnet
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -222,9 +241,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
-            ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
-            DEBIAN_RELEASE=${{ inputs.debian_release }}
+            LEO_VERSION=${{ inputs.project_version }}
+            SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.4.0' }}
+            RUST_VERSION=${{ inputs.rust_version || '1.90.0' }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}
           cache-from: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }}
           cache-to: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }},mode=max
@@ -233,7 +252,7 @@ jobs:
         run: |
           mkdir -p ${{ runner.temp }}/digests
           # Get digest from whichever build step ran
-          digest="${{ steps.build-leo.outputs.digest || steps.build-amareleo.outputs.digest }}"
+          digest="${{ steps.build-leo.outputs.digest || steps.build-devnet.outputs.digest }}"
           touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
       - name: Upload digest artifact
