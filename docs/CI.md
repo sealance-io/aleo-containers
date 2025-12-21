@@ -4,13 +4,14 @@ This repository uses GitHub Actions to automate the building and publishing of D
 
 ## Automated Version Detection
 
-A weekly workflow checks for new releases of Leo:
+A weekly workflow checks for new releases of Leo and snarkOS:
 
 - Runs every Monday at 2:30 AM UTC
-- Scans the upstream Leo repository for new release tags
-- Only processes versions that meet minimum requirements (Leo: v2.4.1 or higher)
+- Scans both Leo and snarkOS repositories for new release tags
+- Only processes versions that meet minimum requirements (Leo >= v3.4.0, snarkOS >= v4.4.0)
 - Compares against existing images in the registry to avoid rebuilding
-- Automatically triggers builds for new versions
+- Triggers `leo-lang` builds for new Leo versions
+- Triggers `aleo-devnet` builds for new Leo+snarkOS combinations
 
 ## Build Workflows
 
@@ -27,9 +28,10 @@ The build system consists of these primary workflows:
    - Calls the reusable build workflow
 
 3. **Update Detection** (`check-updates.yml`)
-   - Monitors upstream Leo repository for new versions
+   - Monitors upstream Leo and snarkOS repositories for new versions
    - Applies semantic versioning filters
-   - Triggers builds for new releases
+   - Triggers `leo-lang` builds for new Leo versions
+   - Triggers `aleo-devnet` builds for new Leo+snarkOS combinations
 
 4. **Deployment Snapshot Workflow** (`build-publish-deployment-snapshot.yml`)
    - Creates custom Aleo devnet images with pre-deployed programs
