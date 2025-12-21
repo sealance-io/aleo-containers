@@ -3,16 +3,44 @@
 ARG DEBIAN_RELEASE=trixie
 ARG RUST_VERSION=1.85.1
 
-# Stage 1: Build leo-lang from source
+# =============================================================================
+# Stage 0: Planner - Generate cargo-chef recipe for dependency caching
+# =============================================================================
+FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as planner
+
+ARG AMARELEO_VERSION=v2.5.0
+ARG AMARELEO_REPO=https://github.com/kaxxa123/amareleo-chain
+
+# Install cargo-chef and git
+RUN cargo install cargo-chef \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Clone repo and generate recipe.json (captures dependency information)
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+RUN git clone -b "${AMARELEO_VERSION}" --recurse-submodules --single-branch --depth 1 "${AMARELEO_REPO}"
+
+WORKDIR /app/amareleo-chain
+RUN cargo chef prepare --recipe-path recipe.json
+
+# =============================================================================
+# Stage 1: Builder - Compile dependencies (cached) then source
+# =============================================================================
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as builder
 
 ARG AMARELEO_VERSION=v2.5.0
 ARG AMARELEO_REPO=https://github.com/kaxxa123/amareleo-chain
+ARG RUST_VERSION
+
 # Force rust to use external Git instead of the internal libgit wrapper
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
-# Install build dependencies in a single layer
-RUN apt-get update \
+# Install cargo-chef and build dependencies
+RUN cargo install cargo-chef \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
     git \
     build-essential \
@@ -23,19 +51,27 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Clone repo and build Leo CLI
-RUN git clone -b "${AMARELEO_VERSION}" --recurse-submodules --single-branch --depth 1 "${AMARELEO_REPO}"
+# Copy recipe from planner and cook dependencies (this layer is cached!)
+COPY --from=planner /app/amareleo-chain/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
 
-WORKDIR /app/amareleo-chain
+# Now clone the actual source and build (only this step reruns on source changes)
+# Clone to /src to avoid conflict with cargo chef's generated structure
+RUN git clone -b "${AMARELEO_VERSION}" --recurse-submodules --single-branch --depth 1 "${AMARELEO_REPO}" /src/amareleo-chain
+
+WORKDIR /src/amareleo-chain
 
 # Ensure we use the specified Rust version (required by snarkvm)
-ARG RUST_VERSION
 RUN rustup toolchain install ${RUST_VERSION} --force && rustup default ${RUST_VERSION}
 
-# Compile with optimizations
-RUN cargo +${RUST_VERSION} install --locked --path .
+# Compile with optimizations - dependencies already compiled from cargo chef cook
+RUN cargo +${RUST_VERSION} build --release --locked \
+    && cp target/release/amareleo-chain /usr/local/bin/amareleo-chain \
+    && strip /usr/local/bin/amareleo-chain
 
+# =============================================================================
 # Stage 2: Create final minimal image
+# =============================================================================
 FROM debian:${DEBIAN_RELEASE}-slim
 
 # Re-declare the build arg in the final stage to ensure proper variable scope
@@ -47,7 +83,7 @@ LABEL org.opencontainers.image.description="Amareleo Chain node"
 LABEL org.opencontainers.image.documentation="${AMARELEO_REPO}"
 
 # Copy amareleo-chain binary from the builder stage
-COPY --from=builder /usr/local/cargo/bin/amareleo-chain /usr/local/bin/
+COPY --from=builder /usr/local/bin/amareleo-chain /usr/local/bin/
 
 # Create non-root user for better security
 RUN groupadd -r amareleo && useradd -r -g amareleo amareleo
