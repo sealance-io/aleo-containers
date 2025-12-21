@@ -7,13 +7,56 @@ ARG LEO_VERSION=v3.4.0
 ARG SNARKOS_VERSION=v4.4.0
 ARG RUST_VERSION=1.90.0
 
-# Stage 1: Build Leo CLI
+# =============================================================================
+# Stage 0a: Leo Planner - Generate cargo-chef recipe for Leo dependency caching
+# =============================================================================
+FROM rust:${RUST_VERSION}-trixie AS leo-planner
+
+ARG LEO_VERSION
+
+# Install cargo-chef and git
+RUN cargo install cargo-chef \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+RUN git clone --branch ${LEO_VERSION} --depth 1 https://github.com/ProvableHQ/leo.git
+
+WORKDIR /build/leo
+RUN cargo chef prepare --recipe-path recipe.json
+
+# =============================================================================
+# Stage 0b: snarkOS Planner - Generate cargo-chef recipe for snarkOS dependency caching
+# =============================================================================
+FROM rust:${RUST_VERSION}-trixie AS snarkos-planner
+
+ARG SNARKOS_VERSION
+
+# Install cargo-chef and git
+RUN cargo install cargo-chef \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+RUN git clone --branch ${SNARKOS_VERSION} --depth 1 https://github.com/ProvableHQ/snarkOS.git
+
+WORKDIR /build/snarkOS
+RUN cargo chef prepare --recipe-path recipe.json
+
+# =============================================================================
+# Stage 1: Build Leo CLI - Dependencies cached via cargo-chef
+# =============================================================================
 FROM rust:${RUST_VERSION}-trixie AS leo-builder
 
 ARG LEO_VERSION
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
+# Install cargo-chef and build dependencies
+RUN cargo install cargo-chef \
+    && apt-get update && apt-get install -y \
     build-essential \
     cmake \
     git \
@@ -22,33 +65,39 @@ RUN apt-get update && apt-get install -y \
     patch \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone and build Leo
 WORKDIR /build
-RUN git clone --branch ${LEO_VERSION} --depth 1 \
-    https://github.com/ProvableHQ/leo.git
-# Force rust to use external Git instead of the internal libgit wrapper
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
-WORKDIR /build/leo
+# Copy recipe from planner and cook dependencies (this layer is cached!)
+COPY --from=leo-planner /build/leo/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Clone and build Leo - dependencies already compiled
+# Clone to /src to avoid conflict with cargo chef's generated structure
+RUN git clone --branch ${LEO_VERSION} --depth 1 https://github.com/ProvableHQ/leo.git /src/leo
+
+WORKDIR /src/leo
 
 # Build Leo in release mode with default features from repository
 RUN cargo build --release --locked && \
     mv target/release/leo /tmp/leo && \
     strip /tmp/leo
 
-# Stage 2: Build snarkOS
+# =============================================================================
+# Stage 2: Build snarkOS - Dependencies cached via cargo-chef
+# =============================================================================
 FROM rust:${RUST_VERSION}-trixie AS snarkos-builder
 
 ARG SNARKOS_VERSION
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
+# Install cargo-chef and build dependencies
+RUN cargo install cargo-chef \
+    && apt-get update && apt-get install -y \
     build-essential \
     clang \
     cmake \
     curl \
-	clang \
-	gcc \
+    gcc \
     lld \
     libssl-dev \
     libcurl4-openssl-dev \
@@ -58,14 +107,19 @@ RUN apt-get update && apt-get install -y \
     protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone and build snarkOS
 WORKDIR /build
-RUN git clone --branch ${SNARKOS_VERSION} --depth 1 \
-    https://github.com/ProvableHQ/snarkOS.git
-# Force rust to use external Git instead of the internal libgit wrapper
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
-WORKDIR /build/snarkOS
+# Copy recipe from planner and cook dependencies (this layer is cached!)
+COPY --from=snarkos-planner /build/snarkOS/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json \
+    --features "default,snarkos-node-metrics,test_network"
+
+# Clone and build snarkOS - dependencies already compiled
+# Clone to /src to avoid conflict with cargo chef's generated structure
+RUN git clone --branch ${SNARKOS_VERSION} --depth 1 https://github.com/ProvableHQ/snarkOS.git /src/snarkOS
+
+WORKDIR /src/snarkOS
 
 # Build snarkOS in release mode with specified features
 # Using the standard feature set for devnet operation
@@ -74,7 +128,9 @@ RUN cargo build --release --locked \
     mv target/release/snarkos /tmp/snarkos && \
     strip /tmp/snarkos
 
+# =============================================================================
 # Stage 3: Final runtime image
+# =============================================================================
 FROM debian:trixie-slim
 
 # Install runtime dependencies

@@ -4,16 +4,44 @@ ARG NODE_VERSION=24
 ARG DEBIAN_RELEASE=trixie
 ARG RUST_VERSION=1.90.0
 
-# Stage 1: Build leo-lang from source
+# =============================================================================
+# Stage 0: Planner - Generate cargo-chef recipe for dependency caching
+# =============================================================================
+FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as planner
+
+ARG LEO_VERSION=v3.4.0
+ARG LEO_REPO=https://github.com/ProvableHQ/leo
+
+# Install cargo-chef and git
+RUN cargo install cargo-chef \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Clone repo and generate recipe.json (captures dependency information)
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+RUN git clone -b "${LEO_VERSION}" --recurse-submodules --single-branch --depth 1 "${LEO_REPO}"
+
+WORKDIR /app/leo
+RUN cargo chef prepare --recipe-path recipe.json
+
+# =============================================================================
+# Stage 1: Builder - Compile dependencies (cached) then source
+# =============================================================================
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as builder
 
 ARG LEO_VERSION=v3.4.0
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
+ARG RUST_VERSION
+
 # Force rust to use external Git instead of the internal libgit wrapper
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
-# Install build dependencies in a single layer
-RUN apt-get update \
+# Install cargo-chef and build dependencies
+RUN cargo install cargo-chef \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
     git \
     pkg-config \
@@ -22,26 +50,35 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Clone repo and build Leo CLI
-RUN git clone -b "${LEO_VERSION}" --recurse-submodules --single-branch --depth 1 "${LEO_REPO}"
+# Copy recipe from planner and cook dependencies (this layer is cached!)
+COPY --from=planner /app/leo/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
 
-WORKDIR /app/leo
+# Now clone the actual source and build (only this step reruns on source changes)
+# Clone to /src to avoid conflict with cargo chef's generated structure
+RUN git clone -b "${LEO_VERSION}" --recurse-submodules --single-branch --depth 1 "${LEO_REPO}" /src/leo
+
+WORKDIR /src/leo
 
 # Ensure we use the specified Rust version (required by snarkvm)
-ARG RUST_VERSION
 RUN rustup toolchain install ${RUST_VERSION} --force && rustup default ${RUST_VERSION}
 
-# Compile with optimizations
-RUN cargo +${RUST_VERSION} install --locked --path .
+# Compile with optimizations - dependencies already compiled from cargo chef cook
+RUN cargo +${RUST_VERSION} build --release --locked \
+    && cp target/release/leo /usr/local/bin/leo \
+    && strip /usr/local/bin/leo
 
+# =============================================================================
 # Stage 2: Create minimal leo image
+# =============================================================================
 FROM node:${NODE_VERSION}-${DEBIAN_RELEASE}-slim as leo
 
+ARG LEO_REPO
 LABEL org.opencontainers.image.source="${LEO_REPO}"
 LABEL org.opencontainers.image.description="Leo CLI with NodeJS environment"
 
 # Copy leo-lang binary from the builder stage
-COPY --from=builder /usr/local/cargo/bin/leo /usr/local/bin/
+COPY --from=builder /usr/local/bin/leo /usr/local/bin/
 
 # Set path to make leo-lang easily accessible
 ENV PATH="/usr/local/bin:${PATH}"
@@ -86,7 +123,9 @@ RUN DEST_DIR="/.aleo/resources/" /tmp/download-provers.sh
 # Default command to show installed versions
 CMD ["check-versions"]
 
+# =============================================================================
 # Stage 3: Create CI image with full toolchains
+# =============================================================================
 FROM debian:${DEBIAN_RELEASE} as leo-ci
 
 ARG LEO_REPO
@@ -113,7 +152,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Copy leo-lang binary from the builder stage
-COPY --from=builder /usr/local/cargo/bin/leo /usr/local/bin/
+COPY --from=builder /usr/local/bin/leo /usr/local/bin/
 
 # Install CI/CD dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
