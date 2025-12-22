@@ -175,7 +175,7 @@ jobs:
             DEBIAN_RELEASE=${{ inputs.debian_release }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}
           cache-from: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }}
-          cache-to: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }},mode=min
+          cache-to: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }},mode=max
 
       - name: Build and push by digest (Aleo Devnet)
         if: inputs.image_name == 'aleo-devnet'
@@ -192,7 +192,7 @@ jobs:
             RUST_VERSION=${{ inputs.rust_version || '1.90.0' }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}
           cache-from: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }}
-          cache-to: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }},mode=min
+          cache-to: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }},mode=max
 
       - name: Export digest
         run: |
@@ -311,7 +311,7 @@ jobs:
             DEBIAN_RELEASE=${{ inputs.debian_release }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}-ci
           cache-from: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}-ci:cache-${{ matrix.platform_pair }}
-          cache-to: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}-ci:cache-${{ matrix.platform_pair }},mode=min
+          cache-to: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}-ci:cache-${{ matrix.platform_pair }},mode=max
 
       - name: Export digest
         run: |
