@@ -187,7 +187,6 @@ jobs:
                   image_name: 'leo-lang',
                   leo_version: tag,
                   build_standard: 'true',
-                  build_ci: 'true',
                   tag_latest: isLatest.toString()
                 }
               });
@@ -256,7 +255,6 @@ jobs:
                   leo_version: build.leoVersion,
                   snarkos_version: build.snarkOsVersion,
                   build_standard: 'true',
-                  build_ci: 'false',
                   tag_latest: build.isLatest.toString()
                 }
               });
@@ -290,7 +288,6 @@ jobs:
               echo "  - image_name: leo-lang"
               echo "  - leo_version: $TAG"
               echo "  - build_standard: true"
-              echo "  - build_ci: true"
               echo "  - tag_latest: $IS_LATEST"
               echo ""
             done
