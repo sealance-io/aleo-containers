@@ -74,8 +74,7 @@ on:
 env:
   REGISTRY: ghcr.io
   DOCKER_BUILDKIT: 1 # enable docker buildkit
-  DOCKER_HOST: "unix:///var/run/docker.sock"
-  TESTNET_ENDPOINT: "http://host.docker.internal:3030"
+  TESTNET_ENDPOINT: "http://localhost:3030"
 
 jobs:
   create-deployment-snapshot-image:
@@ -88,16 +87,25 @@ jobs:
       packages: write
       actions: read
     timeout-minutes: 180
-    container:
-      image: ghcr.io/sealance-io/leo-lang-ci:v3.4.0
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.github_token }}
-      options: --cpus 2 --add-host=host.docker.internal:host-gateway
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Leo CLI
+        id: setup-leo
+        uses: sealance-io/setup-leo-action@b30e4cc53c73355def527d832604763e9b601fb2
+        with:
+          version: '3.4.0'
+          rust-version: '1.90.0'
+          enable-cache: true
+          cache-save: ${{ github.ref == 'refs/heads/main' && 'always' || 'never' }}
+          run-audit: true
+          audit-deny-warnings: false
+
+      - name: Verify Leo installation
+        run: |
+          leo --version
+          echo "Cache hit (binary): ${{ steps.setup-leo.outputs.cache-hit-binary }}"
+          echo "Build time: ${{ steps.setup-leo.outputs.build-time-seconds }}s"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

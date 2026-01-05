@@ -8,7 +8,6 @@ This repository provides Docker images for Aleo blockchain tooling:
 Image variants available:
 
 - **Standard Image**: Contains the core CLI tools with necessary runtime dependencies
-- **CI Image**: Extended version with additional tools for CI/CD pipelines and GitHub Actions workflows (Leo Lang only)
 - **Devnet Image**: Combined Leo and snarkOS for local blockchain development
 
 All images are multi-architecture, supporting AMD64 and ARM64 platforms.
@@ -21,7 +20,6 @@ Pre-built images are available on GitHub Container Registry:
 
 #### Leo Lang
 - **Standard**: `ghcr.io/sealance-io/leo-lang:v3.4.0`
-- **CI**: `ghcr.io/sealance-io/leo-lang-ci:v3.4.0`
 
 #### Aleo Devnet
 - **Integrated**: `ghcr.io/sealance-io/aleo-devnet:v3.4.0-v4.4.0`
@@ -38,17 +36,6 @@ You can also use the `latest` tag to always get the most recent version.
 - Node.js v24
 - Debian trixie (slim)
 - Essential SSL libraries
-
-#### Leo Lang CI Image (`leo-lang-ci`)
-- Leo CLI v3.4.0
-- Full Rust toolchain (v1.85.1)
-- Node.js v24
-- Git + Git LFS
-- Docker CLI
-- Docker Compose
-- Debian trixie (full)
-- Development libraries
-- GitHub Actions workspace setup
 
 #### Aleo Devnet Image (`aleo-devnet`)
 - Leo CLI v3.4.0
@@ -76,32 +63,6 @@ docker run --rm -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v3.4.0 leo b
 
 # Start a shell in the container
 docker run --rm -it -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v3.4.0 /bin/bash
-```
-
-### Leo Lang CI Image
-
-Designed for CI/CD pipelines, especially GitHub Actions:
-
-```bash
-# Use with GitHub Actions
-steps:
-  - name: Build with Leo
-    uses: docker://ghcr.io/sealance-io/leo-lang-ci:v2.5.0
-    with:
-      args: 'leo build'
-
-# Example: Running a pipeline with Docker-in-Docker
-docker run --rm \
-  -v $(pwd):/github/workspace \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  ghcr.io/sealance-io/leo-lang-ci:v2.5.0 \
-  bash -c "cd /github/workspace && leo build && docker-compose up -d"
-
-# Using the full Rust toolchain in the CI image
-docker run --rm -it \
-  -v $(pwd):/app \
-  ghcr.io/sealance-io/leo-lang-ci:v2.5.0 \
-  bash -c "cd /app && cargo build"
 ```
 
 ### Aleo Devnet Image
@@ -135,6 +96,8 @@ docker run -it --rm -v $(pwd):/app -w /app \
 ```
 #### GitHub Actions Example
 
+For CI/CD workflows, use the `setup-leo-action` instead of container images:
+
 ```yaml
 name: Aleo Project Build and Test
 
@@ -147,18 +110,23 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/sealance-io/leo-lang-ci:v2.5.0
-    
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
+
+      - name: Setup Leo CLI
+        uses: sealance-io/setup-leo-action@b30e4cc53c73355def527d832604763e9b601fb2
+        with:
+          version: '3.4.0'
+          rust-version: '1.90.0'
+
       - name: Build Leo project
         run: leo build
-      
+
       - name: Run tests
         run: leo test
 ```
+
+See [setup-leo-action](https://github.com/sealance-io/setup-leo-action) for more options.
 
 ## 📂 Project Structure
 
@@ -232,20 +200,14 @@ This repository provides a build script to create both image variants for any su
 # Login to GitHub Container Registry (only needed when pushing)
 cat ~/.github/token | docker login ghcr.io --username USERNAME --password-stdin
 
-# Build standard Leo Lang image
+# Build Leo Lang image
 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
-
-# Build CI Leo Lang image
-./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --ci
-
-# Build both Leo Lang variants
-./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --both
 
 # Build Aleo Devnet image (Leo v3 + snarkOS)
 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 
 # Build without tagging as latest
-./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --both --no-latest
+./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --no-latest
 
 # Build locally without pushing to registry
 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --no-push
@@ -313,10 +275,6 @@ The `--variant` flag allows you to add a suffix to version tags (not `latest`), 
 # Build Leo with Node.js 24
 NODE_VERSION=24 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --variant node24
 # Produces: leo-lang:v3.4.0-node24, leo-lang:latest
-
-# Build CI variant with Node.js 24
-NODE_VERSION=24 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --ci --variant node24
-# Produces: leo-lang-ci:v3.4.0-node24, leo-lang-ci:latest
 
 # Build with custom Rust version
 RUST_VERSION=1.89.0 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet --variant rust189
@@ -412,7 +370,7 @@ echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 Add the appropriate user permissions:
 
 ```bash
-docker run --rm -v $(pwd):/app -w /app --user $(id -u):$(id -g) ghcr.io/sealance-io/leo-lang:v2.5.0 leo build
+docker run --rm -v $(pwd):/app -w /app --user $(id -u):$(id -g) ghcr.io/sealance-io/leo-lang:v3.4.0 leo build
 ```
 
 ## 📜 License

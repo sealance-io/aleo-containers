@@ -24,10 +24,6 @@ on:
         description: 'Build standard image'
         type: boolean
         default: true
-      build_ci:
-        description: 'Build CI image (leo-lang only)'
-        type: boolean
-        default: false
       tag_latest:
         description: 'Tag as latest'
         type: boolean
@@ -74,7 +70,6 @@ jobs:
       leo_version: ${{ inputs.leo_version }}
       snarkos_version: ${{ needs.derive-params.outputs.snarkos_version }}
       build_standard: ${{ inputs.build_standard }}
-      build_ci: ${{ inputs.build_ci }}
       tag_latest: ${{ inputs.tag_latest }}
     secrets:
       registry_token: ${{ secrets.GITHUB_TOKEN }}

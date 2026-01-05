@@ -14,12 +14,6 @@ This repository provides Docker containerization for the Aleo blockchain ecosyst
 # Leo Lang standard image (with Node.js)
 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --no-push
 
-# Leo Lang CI image (with full Rust toolchain)
-./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --ci --no-push
-
-# Both Leo Lang variants
-./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --both --no-push
-
 # Aleo Devnet integrated image (Leo + snarkOS)
 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet --no-push
 
@@ -76,7 +70,6 @@ All Dockerfiles use multi-stage builds:
    - Stage 0 (`planner`): Generates cargo-chef recipe for dependency caching
    - Stage 1 (`builder`): Compiles Leo from source using Rust with cached dependencies
    - Stage 2 (`leo`): Minimal runtime with Node.js, non-root user
-   - Stage 3 (`leo-ci`): Full CI environment with Rust, Docker, Git
 
 2. **aleo-devnet.Dockerfile**:
    - Stage 0 (`leo-image`): References pre-built `leo-lang` image (ARG workaround for COPY --from)

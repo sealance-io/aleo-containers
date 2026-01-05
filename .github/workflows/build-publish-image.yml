@@ -17,11 +17,6 @@ on:
         required: false
         default: true
         type: boolean
-      build_ci:
-        description: 'Build CI image (only applicable for leo-lang)'
-        required: false
-        default: false
-        type: boolean
       tag_latest:
         description: 'Tag as latest'
         required: false
@@ -109,20 +104,11 @@ jobs:
             exit 1
           fi
 
-  validate-inputs:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Validate CI image compatibility
-        if: inputs.image_name == 'aleo-devnet' && inputs.build_ci
-        run: |
-          echo "::error::CI image is not available for aleo-devnet"
-          exit 1
-
   # =============================================================================
   # STANDARD IMAGE BUILDS - Parallel per-architecture using native runners
   # =============================================================================
   build-standard:
-    needs: [determine-params, validate-inputs]
+    needs: [determine-params]
     if: inputs.build_standard
     strategy:
       fail-fast: false
@@ -254,121 +240,3 @@ jobs:
       - name: Inspect image
         run: |
           docker buildx imagetools inspect ${{ needs.determine-params.outputs.registry_image }}:${{ inputs.project_version }}
-
-  # =============================================================================
-  # CI IMAGE BUILDS - Parallel per-architecture using native runners (Leo only)
-  # =============================================================================
-  build-ci:
-    needs: [determine-params, validate-inputs]
-    if: inputs.build_ci && inputs.image_name == 'leo-lang'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-24.04 # Doesn't use ubuntu-latest for consistency
-            platform_pair: linux-amd64
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-            platform_pair: linux-arm64 # There's no ubuntu-latest-arm alias
-    runs-on: ${{ matrix.runner }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ inputs.registry }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.registry_token }}
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ needs.determine-params.outputs.registry_image }}-ci
-          tags: |
-            type=raw,value=${{ inputs.project_version }}
-
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ${{ inputs.dockerfile }}
-          platforms: ${{ matrix.platform }}
-          target: leo-ci
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
-            ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
-            NODE_VERSION=${{ inputs.node_version || '24' }}
-            DEBIAN_RELEASE=${{ inputs.debian_release }}
-          outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}-ci
-          cache-from: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}-ci:cache-${{ matrix.platform_pair }}
-          cache-to: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}-ci:cache-${{ matrix.platform_pair }},mode=max
-
-      - name: Export digest
-        run: |
-          mkdir -p ${{ runner.temp }}/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "${{ runner.temp }}/digests/${digest#sha256:}"
-
-      - name: Upload digest artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: digests-ci-${{ matrix.platform_pair }}
-          path: ${{ runner.temp }}/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  # =============================================================================
-  # MERGE CI IMAGE - Creates multi-arch manifest from per-arch builds
-  # =============================================================================
-  merge-ci:
-    needs: [determine-params, build-ci]
-    if: inputs.build_ci && inputs.image_name == 'leo-lang'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v4
-        with:
-          path: ${{ runner.temp }}/digests
-          pattern: digests-ci-*
-          merge-multiple: true
-
-      - name: Login to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ inputs.registry }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.registry_token }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ needs.determine-params.outputs.registry_image }}-ci
-          tags: |
-            type=raw,value=${{ inputs.project_version }}
-            type=raw,value=latest,enable=${{ inputs.tag_latest }}
-
-      - name: Create manifest list and push
-        working-directory: ${{ runner.temp }}/digests
-        run: |
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ needs.determine-params.outputs.registry_image }}-ci@sha256:%s ' *)
-
-      - name: Inspect image
-        run: |
-          docker buildx imagetools inspect ${{ needs.determine-params.outputs.registry_image }}-ci:${{ inputs.project_version }}
