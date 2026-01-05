@@ -46,8 +46,6 @@ MAX_RETRIES=3
 RETRY_DELAY=10
 
 # Parse command-line arguments
-BUILD_STANDARD=true
-BUILD_CI=false
 TAG_LATEST=true
 PUSH_IMAGES=true
 HOST_ARCH_ONLY=false
@@ -128,21 +126,6 @@ retry_command() {
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --standard)
-      BUILD_STANDARD=true
-      BUILD_CI=false
-      shift
-      ;;
-    --ci)
-      BUILD_STANDARD=false
-      BUILD_CI=true
-      shift
-      ;;
-    --both)
-      BUILD_STANDARD=true
-      BUILD_CI=true
-      shift
-      ;;
     --no-latest)
       TAG_LATEST=false
       shift
@@ -185,10 +168,7 @@ while [[ $# -gt 0 ]]; do
       fi
       ;;
     --help)
-      echo "Usage: $0 [--standard] [--ci] [--both] [--no-latest] [--no-push] [--local-arch] [--dockerfile FILE] [--image-name NAME] [--variant VARIANT]"
-      echo "  --standard       Build standard image (default)"
-      echo "  --ci             Build image with GitHub Actions tools (only for leo-lang)"
-      echo "  --both           Build both image variants (only for leo-lang)"
+      echo "Usage: $0 [--no-latest] [--no-push] [--local-arch] [--dockerfile FILE] [--image-name NAME] [--variant VARIANT]"
       echo "  --no-latest      Don't tag images as 'latest'"
       echo "  --no-push        Build locally only, don't push to registry"
       echo "  --local-arch     Build only for the host architecture ($(detect_arch))"
@@ -215,13 +195,6 @@ if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
   PROJECT_REPO=${LEO_REPO:-"https://github.com/ProvableHQ/leo"}
   PROJECT_REPO_ARG="LEO_REPO"
 elif [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
-  # Aleo-devnet doesn't support CI image
-  if [[ "$BUILD_CI" == "true" ]]; then
-    echo "Error: CI image is not available for aleo-devnet"
-    echo "Use --standard instead of --ci or --both"
-    exit 1
-  fi
-  
   # Aleo-devnet uses both LEO and SNARKOS versions
   LEO_VERSION=${LEO_VERSION:-"v3.4.0"}
   SNARKOS_VERSION=${SNARKOS_VERSION:-"v4.4.0"}
@@ -430,22 +403,11 @@ build_and_push() {
   echo "${manifest_name} build complete!"
 }
 
-# Build standard image
-if [[ "$BUILD_STANDARD" == "true" ]]; then
-  if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
-    build_and_push "leo" ""
-  else
-    build_and_push "" ""  # No target for aleo-devnet
-  fi
-fi
-
-# Build CI image (only for leo-lang)
-if [[ "$BUILD_CI" == "true" ]]; then
-  # This check is redundant since we already check earlier,
-  # but keeping it for clarity and safety
-  if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
-    build_and_push "leo-ci" "-ci"
-  fi
+# Build image
+if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
+  build_and_push "leo" ""
+else
+  build_and_push "" ""  # No target for aleo-devnet
 fi
 
 echo ""
