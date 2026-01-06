@@ -173,26 +173,26 @@ jobs:
       - name: Wait for devnet to reach consensus version
         run: |
           set -euo pipefail
-          echo "[BUILD] Waiting for devnet to reach consensus version >= 10..."
+          echo "[BUILD] Waiting for devnet to reach consensus version >= 12..."
           RETRY_COUNT=0
-          MAX_RETRIES=50
+          MAX_RETRIES=100
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             CONSENSUS_VERSION=$(curl -s "${{ env.TESTNET_ENDPOINT }}/testnet/consensus_version" 2>/dev/null || echo "")
-            if [ -n "$CONSENSUS_VERSION" ] && [ "$CONSENSUS_VERSION" -ge 10 ] 2>/dev/null; then
-              echo "[SUCCESS] Devnet consensus version is $CONSENSUS_VERSION (>= 10)."
+            if [ -n "$CONSENSUS_VERSION" ] && [ "$CONSENSUS_VERSION" -ge 12 ] 2>/dev/null; then
+              echo "[SUCCESS] Devnet consensus version is $CONSENSUS_VERSION (>= 12)."
               break
             fi
             if [ -z "$CONSENSUS_VERSION" ]; then
               echo "[BUILD] Waiting for consensus version response... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
             else
-              echo "[BUILD] Current consensus version: $CONSENSUS_VERSION, waiting for >= 10... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
+              echo "[BUILD] Current consensus version: $CONSENSUS_VERSION, waiting for >= 12... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
             fi
             sleep 5
             RETRY_COUNT=$((RETRY_COUNT + 1))
           done
           
           if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-            echo "[ERROR] Devnet did not reach consensus version >= 10 after ${MAX_RETRIES} attempts."
+            echo "[ERROR] Devnet did not reach consensus version >= 12 after ${MAX_RETRIES} attempts."
             echo "[WARNING] Container logs:"
             docker logs devnet --tail 50 || true
             exit 1
