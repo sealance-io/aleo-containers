@@ -129,19 +129,12 @@ jobs:
           cache-dependency-path: compliant-transfer-aleo-build/package-lock.json
           cache: 'npm'
 
-      - name: Setup doko-js-cli
-        id: setup-doko
-        uses: sealance-io/setup-doko-js-action@v0.1.4
-        with:
-          doko-repo: 'sealance-io/doko-js'
-          doko-branch: 'fixes_to_dokojs'
-        
-      - name: Verify dokojs is installed
+      - name: Install dokojs CLI
         run: |
+          npm config set @sealance-io:registry https://npm.pkg.github.com
+          npm config set //npm.pkg.github.com/:_authToken ${{ secrets.GITHUB_TOKEN }}
+          npm install -g @sealance-io/dokojs@1.0.0 --ignore-scripts
           dokojs --version
-          dokojs --help
-      - name: Display installed version
-        run: echo "Installed version is ${{ steps.setup-doko.outputs.version }}"
 
       - name: Create data directory
         shell: bash
