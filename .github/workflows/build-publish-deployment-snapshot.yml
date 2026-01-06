@@ -145,6 +145,27 @@ jobs:
           mkdir -p devnet
           echo "[SUCCESS] Created devnet directory: $(pwd)/devnet"
 
+      - name: Prepare deployment environment
+        working-directory: compliant-transfer-aleo-build
+        env:
+          TESTNET_ENDPOINT: 'https://api.explorer.provable.com/v1'
+        run: |
+          set -euo pipefail
+          # Copy environment file
+          cp .env.example .env
+
+          # Install dependencies
+          npm ci
+
+          # Apply package patches
+          npm run postinstall
+
+          # build @sealance-io/policy-engine-aleo
+          npm run build --workspace=@sealance-io/policy-engine-aleo
+
+          # Compile leo programs
+          npm run compile
+
       - name: Bootstrap aleo-devnet
         working-directory: compliant-transfer-aleo-build
         run: |
@@ -156,65 +177,6 @@ jobs:
             -p 3030:3030 \
             -v aleo_devnet_state_volume:/aleo \
             ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
-
-      - name: Wait for devnet port to open
-        run: |
-          set -euo pipefail
-          HOST=localhost
-          PORT=3030
-          TIMEOUT=3
-          RETRY_INTERVAL=2
-
-          echo "[BUILD] Waiting for ${HOST}:${PORT}…"
-          while ! timeout "${TIMEOUT}" bash -c "</dev/tcp/${HOST}/${PORT}" >/dev/null 2>&1; do    # require `bash` shell  [oai_citation:7‡DEV Community](https://dev.to/pwd9000/github-actions-all-the-shells-581h?utm_source=chatgpt.com)
-            echo "[BUILD] Port ${PORT} not yet open—retrying in ${RETRY_INTERVAL}s…"
-            docker ps;
-            sleep "${RETRY_INTERVAL}"
-          done
-
-          echo "[SUCCESS] ${HOST}:${PORT} is now open"
-
-      - name: Wait for credits.aleo to be available
-        run: |
-          set -euo pipefail
-          echo "[BUILD] Waiting for credits.aleo program to be available..."
-          RETRY_COUNT=0
-          MAX_RETRIES=50
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            if curl -s -o /dev/null -w "%{http_code}" "${{ env.TESTNET_ENDPOINT }}/testnet/program/credits.aleo" | grep -q "200"; then
-              echo "[SUCCESS] credits.aleo program is available."
-              break
-            fi
-            echo "[BUILD] Waiting for credits.aleo... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
-            sleep 5
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-          done
-          
-          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-            echo "[ERROR] credits.aleo program not available after ${MAX_RETRIES} attempts."
-            echo "[WARNING] Container logs:"
-            docker logs devnet --tail 50 || true
-            exit 1
-          fi
-      
-      - name: Prepare deployment environment
-        working-directory: compliant-transfer-aleo-build
-        run: |
-          set -euo pipefail
-          # Copy environment file
-          cp .env.example .env
-          
-          # Install dependencies
-          npm ci
-
-          # Apply package patches
-          npm run postinstall
-
-          # build @sealance-io/policy-engine-aleo
-          npm run build --workspace=@sealance-io/policy-engine-aleo
-      
-          # Compile leo programs
-          npm run compile
 
       - name: Wait for devnet to reach consensus version
         run: |
