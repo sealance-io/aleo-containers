@@ -204,24 +204,22 @@ jobs:
           set -euo pipefail
           # Deploy programs to local devnet
           npm run deploy:devnet
-          
+
           # Step 5: Gracefully stop container
           echo "[BUILD] Stopping container devnet gracefully..."
           docker stop --timeout=30 devnet
           echo "[SUCCESS] Container stopped."
-          
+
           # Additional wait to ensure everything is flushed
           echo "[BUILD] Waiting for complete shutdown..."
           sleep 30
-          
-          # Step 6: Copy state from volume to host (ensure we're in correct directory)
-          echo "[BUILD] Copying state from volume to host..."
-          docker run --rm \
-            -v aleo_devnet_state_volume:/aleo \
-            -v "$(pwd)/devnet:/backup" \
-            alpine sh -c "cp -r /aleo/. /backup/"
+
+          # Step 6: Copy state from container to host using docker cp
+          # Note: Using docker cp instead of volume bind mount to avoid DinD path issues
+          echo "[BUILD] Copying state from container to host..."
+          docker cp devnet:/aleo/. ./devnet/
           echo "[SUCCESS] State copied to $(pwd)/devnet"
-          
+
           # Step 7: Cleanup container and volume
           echo "[BUILD] Removing container devnet..."
           docker rm devnet || true
