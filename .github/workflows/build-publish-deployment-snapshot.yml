@@ -266,17 +266,17 @@ jobs:
           set -euo pipefail
           cat > Dockerfile << 'EOF'
           # syntax=docker/dockerfile:1.4
-          ARG DEVNET_VERSION=${DEVNET_VERSION}
-          FROM ghcr.io/sealance-io/aleo-devnet:\${DEVNET_VERSION}
-          
+          ARG DEVNET_VERSION
+          FROM ghcr.io/sealance-io/aleo-devnet:${DEVNET_VERSION}
+
           # Metadata
           LABEL org.opencontainers.image.source="https://github.com/sealance-io/compliant-transfer-aleo"
           LABEL org.opencontainers.image.description="Aleo devnet node with pre-deployed contracts"
           LABEL org.opencontainers.image.authors="Sealance.io"
-          
+
           # Copy blockchain state with deployed contracts
           COPY ./devnet /aleo
-          
+
           # Set the entrypoint to run the node
           ENTRYPOINT ["/usr/local/bin/leo"]
           CMD ["devnet", "--storage", "/data", "--yes", "--verbosity", "4", "--snarkos", "./snarkos", "--num-clients", "1"]
@@ -307,6 +307,8 @@ jobs:
           context: compliant-transfer-aleo-build
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            DEVNET_VERSION=${{ inputs.aleo-devnet-version }}
           tags: |
             ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}
             ${{ inputs.push-latest == 'true' && format('{0}:latest', steps.meta.outputs.image-name) || '' }}
@@ -328,6 +330,8 @@ jobs:
           context: compliant-transfer-aleo-build
           platforms: linux/amd64
           push: false
+          build-args: |
+            DEVNET_VERSION=${{ inputs.aleo-devnet-version }}
           tags: |
             ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}
           cache-from: type=gha
