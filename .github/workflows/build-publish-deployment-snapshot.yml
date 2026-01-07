@@ -180,12 +180,15 @@ jobs:
 
           docker pull ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
           docker volume create aleo_devnet_state_volume
+          # Override CMD to include --snarkos-features test_network (required for --consensus-heights)
           docker run -d \
             --name devnet \
             -p 3030:3030 \
             -v aleo_devnet_state_volume:/aleo \
             -e CONSENSUS_VERSION_HEIGHTS="${CONSENSUS_HEIGHTS}" \
-            ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
+            ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }} \
+            devnet --storage /data --clear-storage --yes --verbosity 4 \
+            --snarkos ./snarkos --num-clients 1 --snarkos-features test_network
 
       - name: Wait for devnet to reach consensus version
         run: |
