@@ -28,6 +28,11 @@ on:
         required: false
         default: false
         type: boolean
+      consensus-version:
+        description: 'Target consensus version for devnet (default: 12)'
+        required: false
+        default: 12
+        type: number
     secrets:
       registry_token:
         description: 'Token for container registry authentication'
@@ -60,6 +65,11 @@ on:
         required: false
         default: false
         type: boolean
+      consensus-version:
+        description: 'Target consensus version for devnet (default: 12)'
+        required: false
+        default: 12
+        type: number
 
 env:
   REGISTRY: ghcr.io
@@ -162,37 +172,45 @@ jobs:
         working-directory: compliant-transfer-aleo-build
         run: |
           set -euo pipefail
+
+          # Generate consensus version heights (0 to consensus-version - 1)
+          CONSENSUS_VERSION=${{ inputs.consensus-version }}
+          CONSENSUS_HEIGHTS=$(seq -s ',' 0 $((CONSENSUS_VERSION - 1)))
+          echo "[BUILD] Using consensus heights: ${CONSENSUS_HEIGHTS}"
+
           docker pull ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
           docker volume create aleo_devnet_state_volume
           docker run -d \
             --name devnet \
             -p 3030:3030 \
             -v aleo_devnet_state_volume:/aleo \
+            -e CONSENSUS_VERSION_HEIGHTS="${CONSENSUS_HEIGHTS}" \
             ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
 
       - name: Wait for devnet to reach consensus version
         run: |
           set -euo pipefail
-          echo "[BUILD] Waiting for devnet to reach consensus version >= 12..."
+          TARGET_CONSENSUS=${{ inputs.consensus-version }}
+          echo "[BUILD] Waiting for devnet to reach consensus version >= ${TARGET_CONSENSUS}..."
           RETRY_COUNT=0
           MAX_RETRIES=100
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             CONSENSUS_VERSION=$(curl -s "${{ env.TESTNET_ENDPOINT }}/testnet/consensus_version" 2>/dev/null || echo "")
-            if [ -n "$CONSENSUS_VERSION" ] && [ "$CONSENSUS_VERSION" -ge 12 ] 2>/dev/null; then
-              echo "[SUCCESS] Devnet consensus version is $CONSENSUS_VERSION (>= 12)."
+            if [ -n "$CONSENSUS_VERSION" ] && [ "$CONSENSUS_VERSION" -ge "$TARGET_CONSENSUS" ] 2>/dev/null; then
+              echo "[SUCCESS] Devnet consensus version is $CONSENSUS_VERSION (>= ${TARGET_CONSENSUS})."
               break
             fi
             if [ -z "$CONSENSUS_VERSION" ]; then
               echo "[BUILD] Waiting for consensus version response... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
             else
-              echo "[BUILD] Current consensus version: $CONSENSUS_VERSION, waiting for >= 12... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
+              echo "[BUILD] Current consensus version: $CONSENSUS_VERSION, waiting for >= ${TARGET_CONSENSUS}... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
             fi
             sleep 5
             RETRY_COUNT=$((RETRY_COUNT + 1))
           done
-          
+
           if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-            echo "[ERROR] Devnet did not reach consensus version >= 12 after ${MAX_RETRIES} attempts."
+            echo "[ERROR] Devnet did not reach consensus version >= ${TARGET_CONSENSUS} after ${MAX_RETRIES} attempts."
             echo "[WARNING] Container logs:"
             docker logs devnet --tail 50 || true
             exit 1
