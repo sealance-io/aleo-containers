@@ -175,7 +175,7 @@ jobs:
 
           # Generate consensus version heights (0 to consensus-version - 1)
           CONSENSUS_VERSION=${{ inputs.consensus-version }}
-          CONSENSUS_HEIGHTS=$(seq -s ',' 0 $((CONSENSUS_VERSION - 1)))
+          CONSENSUS_HEIGHTS=$(seq 0 $((CONSENSUS_VERSION - 1)) | tr '\n' ',' | sed 's/,$//')
           echo "[BUILD] Using consensus heights: ${CONSENSUS_HEIGHTS}"
 
           docker pull ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}

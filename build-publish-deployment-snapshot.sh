@@ -40,6 +40,7 @@ usage() {
     echo "Options:"
     echo "  -c, --commit <sha/branch/tag>    Git commit SHA, branch, or tag to clone (default: main)"
     echo "  -v, --version <version>          Version tag for aleo-devnet image (default: v3.4.0-v4.4.0)"
+    echo "  -t, --consensus-version <num>    Target consensus version for devnet (default: 12)"
     echo "  --skip-push                      Build images but skip pushing to registry (for testing)"
     echo "  -h, --help                       Show this help message"
     echo ""
@@ -48,17 +49,21 @@ usage() {
     echo "  $0 -c develop -v v3.4.0-v4.4.0   # Use develop branch and v3.4.0-v4.4.0 image"
     echo "  $0 --commit abc1234 --version latest"
     echo "  $0 --skip-push                   # Build locally without pushing"
+    echo "  $0 -t 15                         # Use consensus version 15"
     echo ""
     echo "Notes:"
     echo "  - Requires either podman or docker installed and running"
     echo "  - With docker and --skip-push, only current platform is built (buildx limitation)"
     echo "  - For local multi-platform builds, use podman"
+    echo "  - Consensus heights (0 to consensus-version - 1) are passed to devnet"
+    echo "    to accelerate reaching the target consensus version"
     exit 1
 }
 
 # Parse command line arguments
 GIT_REF="main"
 DEVNET_VERSION="v3.4.0-v4.4.0"
+CONSENSUS_VERSION=12
 SKIP_PUSH=false
 
 while [[ $# -gt 0 ]]; do
@@ -69,6 +74,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -v|--version)
             DEVNET_VERSION="$2"
+            shift 2
+            ;;
+        -t|--consensus-version)
+            CONSENSUS_VERSION="$2"
             shift 2
             ;;
         --skip-push)
@@ -88,6 +97,7 @@ done
 print_step "Configuration:"
 echo "  Git ref: ${GIT_REF}"
 echo "  Aleo Devnet version: ${DEVNET_VERSION}"
+echo "  Consensus version: ${CONSENSUS_VERSION}"
 echo "  Clone method: SSH"
 echo "  Skip push: ${SKIP_PUSH}"
 echo "  Dockerfile: Will be generated dynamically"
@@ -143,11 +153,6 @@ if ! command -v npm &> /dev/null; then
     exit 1
 fi
 print_success "npm is available."
-CONTAINER_NAME="aleo-devnet-${RANDOM}"
-VOLUME_NAME="aleo_devnet_state_volume_${RANDOM}"
-DEVNET_IMAGE="ghcr.io/sealance-io/aleo-devnet:${DEVNET_VERSION}"
-# Variables
-BUILDER_NAME=""
 
 # Cleanup function
 cleanup() {
@@ -270,50 +275,9 @@ print_step "Creating volume ${VOLUME_NAME}..."
 ${CONTAINER_TOOL} volume create "${VOLUME_NAME}"
 print_success "Volume created."
 
-print_step "Starting container ${CONTAINER_NAME}..."
-if ! ${CONTAINER_TOOL} run -d \
-    -p 3030:3030 \
-    -v "${VOLUME_NAME}:/aleo" \
-    --name "${CONTAINER_NAME}" \
-    "${DEVNET_IMAGE}"; then
-    print_error "Failed to start container. Port 3030 might be in use or image issue."
-    exit 1
-fi
-print_success "Container started."
-
-# Wait for container to be ready
-print_step "Starting container and waiting for initialization..."
-sleep 5
-
-# Verify container is running
-if ! ${CONTAINER_TOOL} ps --format "{{.Names}}" | grep -q "^${CONTAINER_NAME}$"; then
-    print_error "Container ${CONTAINER_NAME} is not running."
-    ${CONTAINER_TOOL} logs "${CONTAINER_NAME}" 2>&1 || true
-    exit 1
-fi
-print_success "Container is running."
-
-# Give container extra time to fully initialize
-print_step "Waiting for container services to initialize..."
-sleep 5
-
-# Check if we can connect to the container
-print_step "Checking container connectivity on port 3030..."
-RETRY_COUNT=0
-MAX_RETRIES=30
-while ! nc -z localhost 3030 2>/dev/null && [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    print_warning "Waiting for container to be ready on port 3030... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
-    sleep 3
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-done
-
-if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-    print_error "Container is not responding on port 3030 after ${MAX_RETRIES} attempts."
-    print_warning "Container logs:"
-    ${CONTAINER_TOOL} logs "${CONTAINER_NAME}" || true
-    exit 1
-fi
-print_success "Container is ready and responding on port 3030."
+# Generate consensus version heights (0 to CONSENSUS_VERSION - 1)
+CONSENSUS_HEIGHTS=$(seq 0 $((CONSENSUS_VERSION - 1)) | tr '\n' ',' | sed 's/,$//')
+print_step "Using consensus heights: ${CONSENSUS_HEIGHTS}"
 
 # Step 4: Install dependencies and run deployment
 print_step "Installing npm dependencies..."
@@ -341,55 +305,61 @@ if ! command -v dokojs &> /dev/null; then
     print_warning "Please ensure dokojs is installed globally via npm."
 fi
 
-# Wait for "credits.aleo" to be available from devnet
-print_step "Waiting for credits.aleo program to be available..."
-RETRY_COUNT=0
-MAX_RETRIES=50
-while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if curl -s -o /dev/null -w "%{http_code}" "http://localhost:3030/testnet/program/credits.aleo" | grep -q "200"; then
-        print_success "credits.aleo program is available."
-        break
-    fi
-    print_warning "Waiting for credits.aleo... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
-    sleep 5
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-done
-
-if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-    print_error "credits.aleo program not available after ${MAX_RETRIES} attempts."
-    print_warning "Container logs:"
-    ${CONTAINER_TOOL} logs "${CONTAINER_NAME}" --tail 50 || true
-    exit 1
-fi
-
 print_step "Compiling project (rimraf artifacts && dokojs compile)..."
-if ! npm run compile; then
+if ! TESTNET_ENDPOINT="https://api.explorer.provable.com/v1" npm run compile; then
     print_error "Compilation failed. Check if dokojs is properly installed."
     exit 1
 fi
 print_success "Project compiled."
 
+print_step "Starting container ${CONTAINER_NAME}..."
+# Override CMD to include --snarkos-features test_network (required for --consensus-heights)
+if ! ${CONTAINER_TOOL} run -d \
+    -p 3030:3030 \
+    -v "${VOLUME_NAME}:/aleo" \
+    -e CONSENSUS_VERSION_HEIGHTS="${CONSENSUS_HEIGHTS}" \
+    --name "${CONTAINER_NAME}" \
+    "${DEVNET_IMAGE}" \
+    devnet --storage /data --clear-storage --yes --verbosity 4 \
+    --snarkos ./snarkos --num-clients 1 --snarkos-features test_network; then
+    print_error "Failed to start container. Port 3030 might be in use or image issue."
+    exit 1
+fi
+print_success "Container started."
+
+# Wait for container to be ready
+print_step "Starting container and waiting for initialization..."
+sleep 5
+
+# Verify container is running
+if ! ${CONTAINER_TOOL} ps --format "{{.Names}}" | grep -q "^${CONTAINER_NAME}$"; then
+    print_error "Container ${CONTAINER_NAME} is not running."
+    ${CONTAINER_TOOL} logs "${CONTAINER_NAME}" 2>&1 || true
+    exit 1
+fi
+print_success "Container is running."
+
 # Wait for devnet to reach target consensus version
-print_step "Waiting for devnet to reach consensus version >= 12..."
+print_step "Waiting for devnet to reach consensus version >= ${CONSENSUS_VERSION}..."
 RETRY_COUNT=0
-MAX_RETRIES=50
+MAX_RETRIES=100
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    CONSENSUS_VERSION=$(curl -s "http://localhost:3030/testnet/consensus_version" 2>/dev/null || echo "")
-    if [ -n "$CONSENSUS_VERSION" ] && [ "$CONSENSUS_VERSION" -ge 12 ] 2>/dev/null; then
-        print_success "Devnet consensus version is $CONSENSUS_VERSION (>= 12)."
+    CURRENT_CONSENSUS=$(curl -s "http://localhost:3030/testnet/consensus_version" 2>/dev/null || echo "")
+    if [ -n "$CURRENT_CONSENSUS" ] && [ "$CURRENT_CONSENSUS" -ge "$CONSENSUS_VERSION" ] 2>/dev/null; then
+        print_success "Devnet consensus version is $CURRENT_CONSENSUS (>= ${CONSENSUS_VERSION})."
         break
     fi
-    if [ -z "$CONSENSUS_VERSION" ]; then
+    if [ -z "$CURRENT_CONSENSUS" ]; then
         print_warning "Waiting for consensus version response... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
     else
-        print_warning "Current consensus version: $CONSENSUS_VERSION, waiting for >= 12... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
+        print_warning "Current consensus version: $CURRENT_CONSENSUS, waiting for >= ${CONSENSUS_VERSION}... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
     fi
     sleep 5
     RETRY_COUNT=$((RETRY_COUNT + 1))
 done
 
 if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-    print_error "Devnet did not reach consensus version >= 12 after ${MAX_RETRIES} attempts."
+    print_error "Devnet did not reach consensus version >= ${CONSENSUS_VERSION} after ${MAX_RETRIES} attempts."
     print_warning "Container logs:"
     ${CONTAINER_TOOL} logs "${CONTAINER_NAME}" --tail 50 || true
     exit 1
