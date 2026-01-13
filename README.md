@@ -114,7 +114,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Leo CLI
-        uses: sealance-io/setup-leo-action@b30e4cc53c73355def527d832604763e9b601fb2
+        uses: sealance-io/setup-leo-action@126611b39ce92d063c50da6623f8a0b08bf294dd # v1.0.0
         with:
           version: '3.4.0'
           rust-version: '1.90.0'
