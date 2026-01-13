@@ -220,7 +220,6 @@ cat ~/.github/token | docker login ghcr.io --username USERNAME --password-stdin
 
 # Build with custom variant suffix
 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --variant node24
-./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --ci --variant node24
 
 # Get help
 ./build-publish-image.sh --help
