@@ -27,8 +27,8 @@ This repository provides Docker containerization for the Aleo blockchain ecosyst
 # Build deployment snapshot for custom branch/commit (without pushing to remote registry)
 ./build-publish-deployment-snapshot.sh --commit main --skip-push
 
-# Build deployment snapshot with custom versions for leo and snarkos
-./build-publish-deployment-snapshot.sh --version v3.4.0-v4.4.0
+# Build deployment snapshot with custom versions for leo and snarkos (and push)
+./build-publish-deployment-snapshot.sh --commit main --version v3.4.0-v4.4.0
 ```
 
 ### Running Containers
@@ -82,8 +82,9 @@ All Dockerfiles use multi-stage builds:
 **Prover Downloads**: The `download-provers.sh` script downloads mainnet parameter files (~2GB) to `/.aleo/resources/`. These are required for zero-knowledge proof generation and are pre-cached in images to avoid runtime downloads. Downloads run in parallel (4 at a time) for speed.
 
 **Version Dependencies**:
-- Leo v3.4.0+ and aleo-devnet: Rust 1.90.0
+- Leo v3.4.0+ and aleo-devnet: Rust 1.90.0 (set via `RUST_VERSION` env var)
 - snarkOS: Built with features `default,snarkos-node-metrics,test_network`
+- Default versions are defined in `build-publish-image.sh` and may be updated over time
 
 **Docker Compose Network**: Uses fixed IP addressing (172.20.0.0/16) with:
 - validator0: 172.20.0.2 (verbose logging, REST disabled)
@@ -146,4 +147,4 @@ The CI pipeline is optimized for Rust compilation speed:
 
 Build time improvement: **4-6 hours → ~45-50 minutes**
 
-See [docs/CI.md](docs/CI.md) for detailed documentation.
+See [docs/CI.md](docs/CI.md) for detailed CI/CD documentation including push-by-digest pattern and registry caching details.
