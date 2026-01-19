@@ -90,11 +90,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Parse Leo version from aleo-devnet-version
+        id: parse-version
+        run: |
+          # Extract Leo version from aleo-devnet-version (format: vX.Y.Z-vA.B.C)
+          LEO_VERSION=$(echo "${{ inputs.aleo-devnet-version }}" | cut -d'-' -f1 | sed 's/^v//')
+          echo "leo-version=${LEO_VERSION}" >> $GITHUB_OUTPUT
+          echo "Parsed Leo version: ${LEO_VERSION}"
+
       - name: Setup Leo CLI
         id: setup-leo
         uses: sealance-io/setup-leo-action@126611b39ce92d063c50da6623f8a0b08bf294dd # v1.0.0
         with:
-          version: '3.4.0'
+          version: ${{ steps.parse-version.outputs.leo-version }}
           rust-version: '1.90.0'
           enable-cache: true
           cache-save: ${{ github.ref == 'refs/heads/main' && 'always' || 'never' }}
