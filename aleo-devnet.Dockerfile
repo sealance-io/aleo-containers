@@ -5,6 +5,7 @@
 # Build arguments
 ARG LEO_VERSION=v3.4.0
 ARG SNARKOS_VERSION=v4.4.0
+# Used to pin Rust base images.
 ARG RUST_VERSION=1.90.0
 
 # =============================================================================
@@ -30,7 +31,9 @@ ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 RUN git clone --branch ${SNARKOS_VERSION} --depth 1 https://github.com/ProvableHQ/snarkOS.git
 
 WORKDIR /build/snarkOS
-RUN cargo chef prepare --recipe-path recipe.json
+RUN cp rust-toolchain.toml /build/rust-toolchain.toml \
+    && cp /build/rust-toolchain.toml rust-toolchain.toml \
+    && cargo chef prepare --recipe-path recipe.json
 
 # =============================================================================
 # Stage 2: Build snarkOS - Dependencies cached via cargo-chef
@@ -61,6 +64,7 @@ ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
 # Copy recipe from planner and cook dependencies (this layer is cached!)
 COPY --from=snarkos-planner /build/snarkOS/recipe.json recipe.json
+COPY --from=snarkos-planner /build/rust-toolchain.toml rust-toolchain.toml
 RUN cargo chef cook --release --recipe-path recipe.json \
     --features "default,snarkos-node-metrics,test_network"
 
@@ -72,7 +76,8 @@ WORKDIR /src/snarkOS
 
 # Build snarkOS in release mode with specified features
 # Using the standard feature set for devnet operation
-RUN cargo build --release --locked \
+RUN cp /build/rust-toolchain.toml /src/snarkOS/rust-toolchain.toml \
+    && cargo build --release --locked \
     --features "default,snarkos-node-metrics,test_network" && \
     mv target/release/snarkos /tmp/snarkos && \
     strip /tmp/snarkos
