@@ -186,7 +186,6 @@ jobs:
                 inputs: {
                   image_name: 'leo-lang',
                   leo_version: tag,
-                  build_standard: 'true',
                   tag_latest: isLatest.toString()
                 }
               });
@@ -254,7 +253,6 @@ jobs:
                   image_name: 'aleo-devnet',
                   leo_version: build.leoVersion,
                   snarkos_version: build.snarkOsVersion,
-                  build_standard: 'true',
                   tag_latest: build.isLatest.toString()
                 }
               });
@@ -287,7 +285,6 @@ jobs:
               echo "Would trigger: manual-build.yml for Leo with:"
               echo "  - image_name: leo-lang"
               echo "  - leo_version: $TAG"
-              echo "  - build_standard: true"
               echo "  - tag_latest: $IS_LATEST"
               echo ""
             done
