@@ -12,11 +12,6 @@ on:
         description: 'Path to the Dockerfile'
         required: true
         type: string
-      build_standard:
-        description: 'Build standard image'
-        required: false
-        default: true
-        type: boolean
       tag_latest:
         description: 'Tag as latest'
         required: false
@@ -109,7 +104,6 @@ jobs:
   # =============================================================================
   build-standard:
     needs: [determine-params]
-    if: inputs.build_standard
     strategy:
       fail-fast: false
       matrix:
@@ -200,7 +194,6 @@ jobs:
   # =============================================================================
   merge-standard:
     needs: [determine-params, build-standard]
-    if: inputs.build_standard
     runs-on: ubuntu-latest
 
     steps:
