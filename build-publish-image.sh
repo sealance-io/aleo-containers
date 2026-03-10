@@ -124,6 +124,27 @@ retry_command() {
   return $return_code
 }
 
+# Infer Rust toolchain version from upstream repo's rust-toolchain.toml
+# Falls back silently if fetching or parsing fails
+infer_rust_version() {
+  local repo_url="$1"  # e.g., https://github.com/ProvableHQ/leo
+  local tag="$2"       # e.g., v3.4.0
+
+  # Extract org/repo from GitHub URL (strip prefix and trailing .git)
+  local repo_path
+  repo_path=$(echo "$repo_url" | sed -e 's|https://github.com/||' -e 's|\.git$||')
+
+  local raw_url="https://raw.githubusercontent.com/${repo_path}/${tag}/rust-toolchain.toml"
+  local channel
+  channel=$(curl -sSf --max-time 10 "$raw_url" 2>/dev/null \
+    | sed -n 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+    | tr -d '[:space:]') || true
+
+  if [[ -n "$channel" && "$channel" != *"nightly"* ]]; then
+    echo "$channel"
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case $1 in
     --no-latest)
@@ -209,6 +230,22 @@ else
   exit 1
 fi
 
+# Infer RUST_VERSION from upstream if not explicitly set
+if [[ -z "${RUST_VERSION:-}" ]]; then
+  if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
+    INFERRED_RUST=$(infer_rust_version "$PROJECT_REPO" "$PROJECT_VERSION") || true
+  elif [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
+    INFERRED_RUST=$(infer_rust_version "https://github.com/ProvableHQ/snarkOS" "$SNARKOS_VERSION") || true
+  fi
+  if [[ -n "${INFERRED_RUST:-}" ]]; then
+    RUST_VERSION="$INFERRED_RUST"
+    echo "Inferred Rust toolchain version: $RUST_VERSION (from upstream rust-toolchain.toml)"
+  else
+    RUST_VERSION="1.90.0"
+    echo "Could not infer Rust version, using default: $RUST_VERSION"
+  fi
+fi
+
 echo "Building for $IMAGE_NAME with $DOCKERFILE"
 echo "Version: $PROJECT_VERSION"
 if [[ -n "$VARIANT" ]]; then
@@ -255,7 +292,7 @@ build_and_push() {
     common_build_args+=(
       "--build-arg" "LEO_VERSION=${LEO_VERSION}"
       "--build-arg" "SNARKOS_VERSION=${SNARKOS_VERSION}"
-      "--build-arg" "RUST_VERSION=${RUST_VERSION:-1.90.0}"
+      "--build-arg" "RUST_VERSION=${RUST_VERSION}"
     )
   else
     # Standard images use PROJECT_VERSION_ARG and PROJECT_REPO_ARG
@@ -264,6 +301,7 @@ build_and_push() {
       common_build_args+=("--build-arg" "${PROJECT_REPO_ARG}=${PROJECT_REPO}")
     fi
     common_build_args+=("--build-arg" "DEBIAN_RELEASE=${DEBIAN_RELEASE}")
+    common_build_args+=("--build-arg" "RUST_VERSION=${RUST_VERSION}")
   fi
   
   # Add NODE_VERSION arg only for leo-lang image

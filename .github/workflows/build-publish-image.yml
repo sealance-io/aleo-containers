@@ -51,9 +51,9 @@ on:
         default: 'v4.4.0'
         type: string
       rust_version:
-        description: 'Rust version for aleo-devnet'
+        description: 'Rust version override (inferred from upstream if not set)'
         required: false
-        default: '1.90.0'
+        default: ''
         type: string
       leo_version:
         description: 'Leo version for aleo-devnet (if different from project_version)'
@@ -78,6 +78,7 @@ jobs:
       project_version_arg: ${{ steps.set-params.outputs.project_version_arg }}
       uses_target: ${{ steps.set-params.outputs.uses_target }}
       registry_image: ${{ steps.set-params.outputs.registry_image }}
+      rust_version: ${{ steps.infer-rust.outputs.rust_version }}
     steps:
       - name: Set project-specific parameters
         id: set-params
@@ -97,6 +98,35 @@ jobs:
           else
             echo "::error::Unknown image name: ${{ inputs.image_name }}"
             exit 1
+          fi
+
+      - name: Infer Rust toolchain version
+        id: infer-rust
+        run: |
+          if [[ -n "${{ inputs.rust_version }}" ]]; then
+            echo "rust_version=${{ inputs.rust_version }}" >> $GITHUB_OUTPUT
+            echo "Using explicitly provided Rust version: ${{ inputs.rust_version }}"
+          else
+            if [[ "${{ inputs.image_name }}" == "leo-lang" ]]; then
+              REPO_PATH=$(echo "${{ steps.set-params.outputs.project_repo }}" | sed -e 's|https://github.com/||' -e 's|\.git$||')
+              TAG="${{ inputs.project_version }}"
+            elif [[ "${{ inputs.image_name }}" == "aleo-devnet" ]]; then
+              REPO_PATH="ProvableHQ/snarkOS"
+              TAG="${{ inputs.snarkos_version || 'v4.4.0' }}"
+            fi
+
+            CHANNEL=$(curl -sSf --max-time 10 \
+              "https://raw.githubusercontent.com/${REPO_PATH}/${TAG}/rust-toolchain.toml" 2>/dev/null \
+              | sed -n 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+              | tr -d '[:space:]') || true
+
+            if [[ -n "$CHANNEL" && "$CHANNEL" != *nightly* ]]; then
+              echo "rust_version=${CHANNEL}" >> $GITHUB_OUTPUT
+              echo "Inferred Rust version: ${CHANNEL}"
+            else
+              echo "rust_version=1.90.0" >> $GITHUB_OUTPUT
+              echo "Could not infer Rust version, using default: 1.90.0"
+            fi
           fi
 
   # =============================================================================
@@ -151,6 +181,7 @@ jobs:
           build-args: |
             ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
             ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
+            RUST_VERSION=${{ needs.determine-params.outputs.rust_version }}
             NODE_VERSION=${{ inputs.node_version || '24' }}
             DEBIAN_RELEASE=${{ inputs.debian_release }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}
@@ -169,7 +200,7 @@ jobs:
           build-args: |
             LEO_VERSION=${{ inputs.leo_version || 'v3.4.0' }}
             SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.4.0' }}
-            RUST_VERSION=${{ inputs.rust_version || '1.90.0' }}
+            RUST_VERSION=${{ needs.determine-params.outputs.rust_version }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}
           cache-from: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }}
           cache-to: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }},mode=max
