@@ -11,14 +11,14 @@ on:
           - leo-lang
           - aleo-devnet
       leo_version:
-        description: 'Leo version (e.g., v3.4.0)'
+        description: 'Leo version (e.g., v3.5.0)'
         required: true
         type: string
-        default: 'v3.4.0'
+        default: 'v3.5.0'
       snarkos_version:
         description: 'snarkOS version (aleo-devnet only)'
         type: string
-        default: 'v4.4.0'
+        default: 'v4.5.3'
         required: false
       tag_latest:
         description: 'Tag as latest'
@@ -42,7 +42,7 @@ jobs:
         run: |
           LEO_VERSION="${{ inputs.leo_version }}"
           SNARKOS_VERSION="${{ inputs.snarkos_version }}"
-          SNARKOS_VERSION="${SNARKOS_VERSION:-v4.4.0}"
+          SNARKOS_VERSION="${SNARKOS_VERSION:-v4.5.3}"
 
           if [[ "${{ inputs.image_name }}" == "leo-lang" ]]; then
             echo "dockerfile=leo.Dockerfile" >> $GITHUB_OUTPUT
@@ -50,7 +50,7 @@ jobs:
             echo "project_version=${LEO_VERSION}" >> $GITHUB_OUTPUT
           elif [[ "${{ inputs.image_name }}" == "aleo-devnet" ]]; then
             echo "dockerfile=aleo-devnet.Dockerfile" >> $GITHUB_OUTPUT
-            # For aleo-devnet, project_version is combined: v3.4.0-v4.4.0
+            # For aleo-devnet, project_version is combined: v3.5.0-v4.5.3
             echo "project_version=${LEO_VERSION}-${SNARKOS_VERSION}" >> $GITHUB_OUTPUT
           fi
 

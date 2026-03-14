@@ -28,20 +28,20 @@ Docker containerization for the Aleo blockchain ecosystem: Leo Lang (aleo CLI) a
 ./build-publish-deployment-snapshot.sh --commit main --skip-push
 
 # Build with custom versions and consensus target (and push)
-./build-publish-deployment-snapshot.sh --commit main --version v3.4.0-v4.4.0 --consensus-version 15
+./build-publish-deployment-snapshot.sh --commit main --version v3.5.0-v4.5.3 --consensus-version 13
 ```
 
 ### Running Containers
 
 ```bash
 # Run Leo Lang CLI
-docker run --rm ghcr.io/sealance-io/leo-lang:v3.4.0 leo --help
+docker run --rm ghcr.io/sealance-io/leo-lang:v3.5.0 leo --help
 
 # Run Aleo devnet (Leo v3 + snarkOS)
-docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/data ghcr.io/sealance-io/aleo-devnet:v3.4.0-v4.4.0
+docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/data ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.3
 
 # Run local testnet with docker-compose (4 validators + 1 client)
-# NOTE: requires locally-tagged image "localhost/snarkos:devnet-v4.4.0"
+# NOTE: requires locally-tagged image "localhost/snarkos:devnet-v4.5.3"
 docker-compose up -d
 
 # Access REST API after testnet starts
@@ -77,9 +77,15 @@ All Dockerfiles use multi-stage builds with cargo-chef for dependency caching:
    - `snarkos-builder`: Cooks dependencies, builds snarkOS with `test_network` feature
    - Final stage: Combines Leo + snarkOS binaries, pre-downloads prover parameters
 
-### Rust Toolchain Version Deferral
+### Rust Toolchain Version Handling
 
-The `RUST_VERSION` build arg (default: 1.90.0) pins the Docker **base image** (`rust:${RUST_VERSION}-slim-trixie`). However, the actual Rust compiler version used for compilation is determined by the upstream project's `rust-toolchain.toml`. During the planner stage, this file is copied from the cloned repo and propagated to the builder stage via `COPY --from=planner`. This means builds use whatever toolchain the upstream project specifies, regardless of the base image version. The base image just needs to have `rustup` available to install the required toolchain.
+Two layers of Rust version management work together:
+
+1. **Build-time inference** (`build-publish-image.sh` and CI): If `RUST_VERSION` is not explicitly set, the `infer_rust_version()` function fetches the upstream project's `rust-toolchain.toml` from GitHub (via raw.githubusercontent.com) and extracts the `channel` value. This sets the Docker **base image** tag (`rust:${RUST_VERSION}-slim-trixie`). Falls back to `1.92.0` if inference fails or the channel is nightly.
+
+2. **Dockerfile-level deferral**: Regardless of the base image version, the actual Rust compiler used for compilation is determined by the upstream `rust-toolchain.toml`. During the planner stage, this file is copied from the cloned repo and propagated to the builder stage via `COPY --from=planner`. The base image just needs `rustup` to install the required toolchain.
+
+In practice, inference (step 1) tries to align the base image with what the Dockerfile will need (step 2), avoiding an unnecessary toolchain download during the build. Set `RUST_VERSION` explicitly only to override this behavior.
 
 ### Critical Implementation Details
 
@@ -87,7 +93,7 @@ The `RUST_VERSION` build arg (default: 1.90.0) pins the Docker **base image** (`
 
 **snarkOS Build Features**: `default,snarkos-node-metrics,test_network` — the `test_network` feature is required for devnet operation.
 
-**Docker Compose Network**: Uses `localhost/snarkos:devnet-v4.4.0` (locally-tagged image, not from GHCR). Fixed IP addressing (172.20.0.0/16):
+**Docker Compose Network**: Uses `localhost/snarkos:devnet-v4.5.3` (locally-tagged image, not from GHCR). Fixed IP addressing (172.20.0.0/16):
 - validator0: 172.20.0.2 (verbose logging, REST disabled)
 - validator1-3: 172.20.0.3-5 (quiet logging)
 - client0: 172.20.0.6 (REST API on port 3030)
@@ -106,15 +112,19 @@ The `CONSENSUS_VERSION_HEIGHTS` environment variable (commented out in docker-co
 **`build-publish-deployment-snapshot.sh`**:
 - Clones `sealance-io/compliant-transfer-aleo` at specified `--commit`
 - Starts devnet container, waits for initialization (credits.aleo available, consensus >= target)
-- `--consensus-version N` sets target consensus height (default: 12), passes heights 0..N-1 via `CONSENSUS_VERSION_HEIGHTS` to accelerate reaching it
+- `--consensus-version N` sets target consensus height (default: 13), passes heights 0..N-1 via `CONSENSUS_VERSION_HEIGHTS` to accelerate reaching it
 - Deploys programs, captures blockchain state, builds multi-arch image
 
 ### Environment Variables for Customization
 
+`RUST_VERSION` is auto-inferred from the upstream `rust-toolchain.toml` — only set it to override.
+
 ```bash
-LEO_VERSION="v3.4.0" SNARKOS_VERSION="v4.4.0" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
+LEO_VERSION="v3.5.0" SNARKOS_VERSION="v4.5.3" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 LEO_REPO="https://github.com/your-fork/leo" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
-NODE_VERSION=18 DEBIAN_RELEASE=bullseye RUST_VERSION=1.90.0 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
+NODE_VERSION=18 DEBIAN_RELEASE=bullseye ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
+# Override auto-inferred Rust version (rarely needed):
+RUST_VERSION=1.85.0 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 ```
 
 ## CI/CD Automation
@@ -122,8 +132,24 @@ NODE_VERSION=18 DEBIAN_RELEASE=bullseye RUST_VERSION=1.90.0 ./build-publish-imag
 GitHub Actions workflows (in `.github/workflows/`):
 - **`build-publish-image.yml`**: Reusable workflow for multi-arch builds (called via `workflow_call`)
 - **`manual-build.yml`**: Entry point for manual builds via `workflow_dispatch`
-- **`check-updates.yml`**: Version detection — scans upstream Leo (ProvableHQ/leo) and snarkOS (ProvableHQ/snarkOS) for new releases. Minimum versions: Leo >= v3.4.0, snarkOS >= v4.4.0. The scheduled cron is currently disabled; trigger manually via `gh workflow run check-updates.yml`
-- **`build-publish-deployment-snapshot.yml`**: Creates pre-deployed devnet images
+- **`check-updates.yml`**: Version detection — scans upstream Leo (ProvableHQ/leo) and snarkOS (ProvableHQ/snarkOS) for new releases. Minimum versions: Leo >= v3.5.0, snarkOS >= v4.5.3. The scheduled cron is currently disabled; trigger manually via `gh workflow run check-updates.yml`
+- **`build-publish-deployment-snapshot.yml`**: Creates pre-deployed devnet images. Uses `setup-leo-action` on the runner for Leo CLI (not Docker), and `docker cp` instead of volume mounts to avoid Docker-in-Docker path issues
+
+### Triggering CI from the CLI
+
+```bash
+# Trigger a manual image build
+gh workflow run manual-build.yml -f image_name=leo-lang -f leo_version=v3.5.0
+
+# Trigger an aleo-devnet build
+gh workflow run manual-build.yml -f image_name=aleo-devnet -f leo_version=v3.5.0 -f snarkos_version=v4.5.3
+
+# Check for upstream version updates
+gh workflow run check-updates.yml
+
+# Trigger a deployment snapshot build
+gh workflow run build-publish-deployment-snapshot.yml -f git-ref=main -f aleo-devnet-version=v3.5.0-v4.5.3
+```
 
 ### Build Optimizations
 

@@ -9,13 +9,13 @@ on:
     # Allow manual trigger for testing
     inputs:
       minimum_leo_version:
-        description: 'Minimum Leo version to build (defaults to v3.4.0)'
+        description: 'Minimum Leo version to build (defaults to v3.5.0)'
         required: false
-        default: 'v3.4.0'
+        default: 'v3.5.0'
       minimum_snarkos_version:
-        description: 'Minimum snarkOS version to build (defaults to v4.4.0)'
+        description: 'Minimum snarkOS version to build (defaults to v4.5.3)'
         required: false
-        default: 'v4.4.0'
+        default: 'v4.5.3'
 
 jobs:
   check-updates:
@@ -36,8 +36,8 @@ jobs:
           echo "snarkos_repo=ProvableHQ/snarkOS" >> $GITHUB_OUTPUT
           echo "registry=ghcr.io" >> $GITHUB_OUTPUT
           echo "organization=sealance-io" >> $GITHUB_OUTPUT
-          echo "min_leo_version=${{ inputs.minimum_leo_version || 'v3.4.0' }}" >> $GITHUB_OUTPUT
-          echo "min_snarkos_version=${{ inputs.minimum_snarkos_version || 'v4.4.0' }}" >> $GITHUB_OUTPUT
+          echo "min_leo_version=${{ inputs.minimum_leo_version || 'v3.5.0' }}" >> $GITHUB_OUTPUT
+          echo "min_snarkos_version=${{ inputs.minimum_snarkos_version || 'v4.5.3' }}" >> $GITHUB_OUTPUT
 
       - name: Setup for Act detection
         id: detect_act
