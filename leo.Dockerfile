@@ -3,14 +3,14 @@
 ARG NODE_VERSION=24
 ARG DEBIAN_RELEASE=trixie
 # Used to pin Rust base images.
-ARG RUST_VERSION=1.90.0
+ARG RUST_VERSION=1.92.0
 
 # =============================================================================
 # Stage 0: Planner - Generate cargo-chef recipe for dependency caching
 # =============================================================================
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as planner
 
-ARG LEO_VERSION=v3.4.0
+ARG LEO_VERSION=v3.5.0
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
 
 # Install cargo-chef and git
@@ -35,7 +35,7 @@ RUN cp rust-toolchain.toml /app/rust-toolchain.toml \
 # =============================================================================
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as builder
 
-ARG LEO_VERSION=v3.4.0
+ARG LEO_VERSION=v3.5.0
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
 
 # Force rust to use external Git instead of the internal libgit wrapper

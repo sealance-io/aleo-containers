@@ -28,7 +28,7 @@ on:
         default: 'sealance-io'
         type: string
       project_version:
-        description: 'Project version to build (e.g., v3.4.0)'
+        description: 'Project version to build (e.g., v3.5.0)'
         required: true
         type: string
       project_repo:
@@ -48,7 +48,7 @@ on:
       snarkos_version:
         description: 'snarkOS version for aleo-devnet'
         required: false
-        default: 'v4.4.0'
+        default: 'v4.5.3'
         type: string
       rust_version:
         description: 'Rust version override (inferred from upstream if not set)'
@@ -112,7 +112,7 @@ jobs:
               TAG="${{ inputs.project_version }}"
             elif [[ "${{ inputs.image_name }}" == "aleo-devnet" ]]; then
               REPO_PATH="ProvableHQ/snarkOS"
-              TAG="${{ inputs.snarkos_version || 'v4.4.0' }}"
+              TAG="${{ inputs.snarkos_version || 'v4.5.3' }}"
             fi
 
             CHANNEL=$(curl -sSf --max-time 10 \
@@ -124,8 +124,8 @@ jobs:
               echo "rust_version=${CHANNEL}" >> $GITHUB_OUTPUT
               echo "Inferred Rust version: ${CHANNEL}"
             else
-              echo "rust_version=1.90.0" >> $GITHUB_OUTPUT
-              echo "Could not infer Rust version, using default: 1.90.0"
+              echo "rust_version=1.92.0" >> $GITHUB_OUTPUT
+              echo "Could not infer Rust version, using default: 1.92.0"
             fi
           fi
 
@@ -198,8 +198,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            LEO_VERSION=${{ inputs.leo_version || 'v3.4.0' }}
-            SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.4.0' }}
+            LEO_VERSION=${{ inputs.leo_version || 'v3.5.0' }}
+            SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.5.3' }}
             RUST_VERSION=${{ needs.determine-params.outputs.rust_version }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}
           cache-from: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }}
