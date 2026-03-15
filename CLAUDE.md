@@ -38,7 +38,7 @@ Docker containerization for the Aleo blockchain ecosystem: Leo Lang (aleo CLI) a
 docker run --rm ghcr.io/sealance-io/leo-lang:v3.5.0 leo --help
 
 # Run Aleo devnet (Leo v3 + snarkOS)
-docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/data ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.3
+docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/aleo/data ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.3
 
 # Run local testnet with docker-compose (4 validators + 1 client)
 # NOTE: requires locally-tagged image "localhost/snarkos:devnet-v4.5.3"
