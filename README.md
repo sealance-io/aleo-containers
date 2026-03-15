@@ -72,14 +72,14 @@ For running a local Aleo development network with Leo v3 and snarkOS:
 ```bash
 # Run a minimal devnet (4 validators + 1 client)
 docker run -it --rm -p 3030:3030 -p 4130:4130 \
-  -v $(pwd)/data:/data \
+  -v $(pwd)/data:/aleo/data \
   ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.3
 
 # Run with custom devnet parameters
 docker run -it --rm -p 3030:3030 -p 4130:4130 \
-  -v $(pwd)/data:/data \
+  -v $(pwd)/data:/aleo/data \
   ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.3 \
-  devnet --storage /data --clear-storage --yes \
+  devnet --storage /aleo/data --clear-storage --yes \
   --verbosity 4 --num-validators 4 --num-clients 2
 
 # Run snarkOS directly instead of Leo devnet command
