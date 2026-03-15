@@ -221,7 +221,8 @@ jobs:
 
           docker pull ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
           docker volume create aleo_devnet_state_volume
-          # Override CMD to include --snarkos-features test_network (required for --consensus-heights)
+          # Explicit devnet args work with both wrapper (passthrough) and pre-wrapper (direct leo) base images.
+          # --snarkos-features test_network is required for CONSENSUS_VERSION_HEIGHTS support.
           docker run -d \
             --name devnet \
             -p 3030:3030 \
@@ -256,7 +257,7 @@ jobs:
           if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
             echo "[ERROR] Devnet did not reach consensus version >= ${TARGET_CONSENSUS} after ${MAX_RETRIES} attempts."
             echo "[WARNING] Container logs:"
-            docker logs devnet --tail 50 || true
+            docker logs devnet --tail 200 || true
             exit 1
           fi
 
@@ -335,13 +336,9 @@ jobs:
           LABEL org.opencontainers.image.source="https://github.com/sealance-io/compliant-transfer-aleo"
           LABEL org.opencontainers.image.description="Aleo devnet node with pre-deployed contracts"
           LABEL org.opencontainers.image.authors="Sealance.io"
-          
+
           # Copy blockchain state with deployed contracts
           COPY --chown=leo:leo ./devnet /aleo
-          
-          # Set the entrypoint to run the node
-          ENTRYPOINT ["/usr/local/bin/leo"]
-          CMD ["devnet", "--storage", "/aleo/data", "--yes", "--verbosity", "4", "--snarkos", "./snarkos", "--num-clients", "1"]
           EOF
       
       - name: Extract metadata

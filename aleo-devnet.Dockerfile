@@ -133,9 +133,22 @@ USER leo
 # Download provers to leo user's home directory
 RUN DEST_DIR="/home/leo/.aleo/resources/" /tmp/download-provers.sh
 
+# Copy entrypoint script for log forwarding
+COPY --chmod=755 --chown=leo:leo devnet-entrypoint.sh /aleo/devnet-entrypoint.sh
+
 # Set environment variables for better devnet operation
 ENV RUST_LOG=info \
     RUST_BACKTRACE=1
+
+# Environment variables for devnet configuration (used by entrypoint)
+ENV STORAGE=/aleo/data \
+    VERBOSITY=4 \
+    NUM_VALIDATORS=4 \
+    NUM_CLIENTS=1 \
+    CLEAR_STORAGE=no \
+    SNARKOS_FEATURES=test_network \
+    LOG_WAIT_SECONDS=5 \
+    LOG_POLL_INTERVAL=3
 
 # Expose ports
 # 3030: REST API
@@ -146,17 +159,19 @@ EXPOSE 3030 4130 4180
 # Volume for blockchain storage (owned by leo user)
 VOLUME ["/aleo/data"]
 
-# Default entrypoint is leo
-ENTRYPOINT ["/usr/local/bin/leo"]
+# Default entrypoint uses wrapper script for log forwarding
+# The wrapper script:
+# - Starts leo devnet in background
+# - Tails snarkOS log files to container stdout
+# - Handles graceful shutdown signals
+ENTRYPOINT ["/aleo/devnet-entrypoint.sh"]
 
-# Default command runs a minimal devnet
-# --storage: Use /aleo/data for blockchain storage
-# --clear-storage: Clean start each time
-# --yes: Auto-confirm prompts
-# --verbosity 4: Maximum debug output
-# --snarkos: Use our pre-built binary
-# --num-clients: Single client for minimal setup
-CMD ["devnet", "--storage", "/aleo/data", "--clear-storage", "--yes", "--verbosity", "4", "--snarkos", "./snarkos", "--num-clients", "1"]
+# Default command is empty (wrapper uses environment variables)
+# Pass additional arguments to override: docker run ... -- --extra-flag
+CMD []
+
+# To bypass the wrapper and use leo directly:
+# docker run --entrypoint /usr/local/bin/leo ... devnet --help
 
 # Build metadata
 ARG LEO_VERSION

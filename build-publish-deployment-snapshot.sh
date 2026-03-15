@@ -344,7 +344,8 @@ fi
 print_success "Project compiled."
 
 print_step "Starting container ${CONTAINER_NAME}..."
-# Override CMD to include --snarkos-features test_network (required for --consensus-heights)
+# Explicit devnet args work with both wrapper (passthrough) and pre-wrapper (direct leo) base images.
+# --snarkos-features test_network is required for CONSENSUS_VERSION_HEIGHTS support.
 if ! ${CONTAINER_TOOL} run -d \
     -p 3030:3030 \
     -v "${VOLUME_NAME}:/aleo" \
@@ -460,12 +461,6 @@ LABEL org.opencontainers.image.base.name="ghcr.io/sealance-io/aleo-devnet:\${DEV
 
 # Copy blockchain state with proper ownership for leo user
 COPY --chown=leo:leo ./devnet /aleo
-
-# Set the entrypoint to run the node
-ENTRYPOINT ["/usr/local/bin/leo"]
-
-# Provide default arguments that can be overridden
-CMD ["devnet", "--storage", "/aleo/data", "--yes", "--verbosity", "4", "--snarkos", "./snarkos", "--num-clients", "1"]
 EOF
 print_success "Dockerfile generated."
 
