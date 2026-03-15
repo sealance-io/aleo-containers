@@ -94,6 +94,37 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate aleo-devnet version against minimum requirements
+# Pre-migration images (< v3.5.0-v4.5.3) lack the leo user, breaking --chown=leo:leo
+validate_devnet_version() {
+    local version="$1"
+    local min_leo="3.5.0"
+    local min_snarkos="4.5.3"
+
+    # Extract Leo version (first vX.Y.Z) and snarkOS version (second vA.B.C)
+    if [[ "$version" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+        local leo_ver="${BASH_REMATCH[1]}"
+        local snarkos_ver="${BASH_REMATCH[2]}"
+
+        # Compare using sort -V (version sort)
+        if [[ "$(printf '%s\n%s' "$min_leo" "$leo_ver" | sort -V | head -n1)" != "$min_leo" ]]; then
+            print_error "Leo version v${leo_ver} is below minimum v${min_leo}."
+            print_error "Pre-migration base images lack the rootless 'leo' user and /aleo/data layout."
+            exit 1
+        fi
+        if [[ "$(printf '%s\n%s' "$min_snarkos" "$snarkos_ver" | sort -V | head -n1)" != "$min_snarkos" ]]; then
+            print_error "snarkOS version v${snarkos_ver} is below minimum v${min_snarkos}."
+            print_error "Pre-migration base images lack the rootless 'leo' user and /aleo/data layout."
+            exit 1
+        fi
+    else
+        print_warning "Version '${version}' does not match expected format vX.Y.Z-vA.B.C."
+        print_warning "Cannot validate against minimum requirements — proceeding anyway."
+    fi
+}
+
+validate_devnet_version "$DEVNET_VERSION"
+
 print_step "Configuration:"
 echo "  Git ref: ${GIT_REF}"
 echo "  Aleo Devnet version: ${DEVNET_VERSION}"
@@ -320,7 +351,7 @@ if ! ${CONTAINER_TOOL} run -d \
     -e CONSENSUS_VERSION_HEIGHTS="${CONSENSUS_HEIGHTS}" \
     --name "${CONTAINER_NAME}" \
     "${DEVNET_IMAGE}" \
-    devnet --storage /data --clear-storage --yes --verbosity 4 \
+    devnet --storage /aleo/data --clear-storage --yes --verbosity 4 \
     --snarkos ./snarkos --num-clients 1 --snarkos-features test_network; then
     print_error "Failed to start container. Port 3030 might be in use or image issue."
     exit 1
@@ -427,13 +458,14 @@ LABEL org.opencontainers.image.title="Aleo devnet Custom"
 LABEL org.opencontainers.image.description="Aleo devnet node with sealance-io programs deployment"
 LABEL org.opencontainers.image.base.name="ghcr.io/sealance-io/aleo-devnet:\${DEVNET_VERSION}"
 
-COPY ./devnet /aleo
+# Copy blockchain state with proper ownership for leo user
+COPY --chown=leo:leo ./devnet /aleo
 
 # Set the entrypoint to run the node
 ENTRYPOINT ["/usr/local/bin/leo"]
 
 # Provide default arguments that can be overridden
-CMD ["devnet", "--storage", "/data", "--yes", "--verbosity", "4", "--snarkos", "./snarkos", "--num-clients", "1"]
+CMD ["devnet", "--storage", "/aleo/data", "--yes", "--verbosity", "4", "--snarkos", "./snarkos", "--num-clients", "1"]
 EOF
 print_success "Dockerfile generated."
 

@@ -98,6 +98,31 @@ jobs:
           echo "leo-version=${LEO_VERSION}" >> $GITHUB_OUTPUT
           echo "Parsed Leo version: ${LEO_VERSION}"
 
+      - name: Validate aleo-devnet version
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.aleo-devnet-version }}"
+          MIN_LEO="3.5.0"
+          MIN_SNARKOS="4.5.3"
+
+          # Extract Leo and snarkOS versions from format vX.Y.Z-vA.B.C
+          if [[ "$VERSION" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            LEO_VER="${BASH_REMATCH[1]}"
+            SNARKOS_VER="${BASH_REMATCH[2]}"
+
+            if [[ "$(printf '%s\n%s' "$MIN_LEO" "$LEO_VER" | sort -V | head -n1)" != "$MIN_LEO" ]]; then
+              echo "::error::Leo version v${LEO_VER} is below minimum v${MIN_LEO}. Pre-migration base images lack the rootless 'leo' user and /aleo/data layout."
+              exit 1
+            fi
+            if [[ "$(printf '%s\n%s' "$MIN_SNARKOS" "$SNARKOS_VER" | sort -V | head -n1)" != "$MIN_SNARKOS" ]]; then
+              echo "::error::snarkOS version v${SNARKOS_VER} is below minimum v${MIN_SNARKOS}. Pre-migration base images lack the rootless 'leo' user and /aleo/data layout."
+              exit 1
+            fi
+            echo "Version validation passed: Leo v${LEO_VER} >= v${MIN_LEO}, snarkOS v${SNARKOS_VER} >= v${MIN_SNARKOS}"
+          else
+            echo "::warning::Version '${VERSION}' does not match expected format vX.Y.Z-vA.B.C. Cannot validate against minimum requirements."
+          fi
+
       - name: Setup Leo CLI
         id: setup-leo
         uses: sealance-io/setup-leo-action@126611b39ce92d063c50da6623f8a0b08bf294dd # v1.0.0
@@ -203,7 +228,7 @@ jobs:
             -v aleo_devnet_state_volume:/aleo \
             -e CONSENSUS_VERSION_HEIGHTS="${CONSENSUS_HEIGHTS}" \
             ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }} \
-            devnet --storage /data --clear-storage --yes --verbosity 4 \
+            devnet --storage /aleo/data --clear-storage --yes --verbosity 4 \
             --snarkos ./snarkos --num-clients 1 --snarkos-features test_network
 
       - name: Wait for devnet to reach consensus version
@@ -310,13 +335,13 @@ jobs:
           LABEL org.opencontainers.image.source="https://github.com/sealance-io/compliant-transfer-aleo"
           LABEL org.opencontainers.image.description="Aleo devnet node with pre-deployed contracts"
           LABEL org.opencontainers.image.authors="Sealance.io"
-
+          
           # Copy blockchain state with deployed contracts
-          COPY ./devnet /aleo
-
+          COPY --chown=leo:leo ./devnet /aleo
+          
           # Set the entrypoint to run the node
           ENTRYPOINT ["/usr/local/bin/leo"]
-          CMD ["devnet", "--storage", "/data", "--yes", "--verbosity", "4", "--snarkos", "./snarkos", "--num-clients", "1"]
+          CMD ["devnet", "--storage", "/aleo/data", "--yes", "--verbosity", "4", "--snarkos", "./snarkos", "--num-clients", "1"]
           EOF
       
       - name: Extract metadata

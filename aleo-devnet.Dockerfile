@@ -1,6 +1,6 @@
 # aleo-devnet.Dockerfile - Leo CLI with snarkOS for local devnet testing
 # Build: docker build -f aleo-devnet.Dockerfile -t aleo-devnet .
-# Run: docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/data aleo-devnet
+# Run: docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/aleo/data aleo-devnet
 
 # Build arguments
 ARG LEO_VERSION=v3.5.0
@@ -98,6 +98,10 @@ RUN apt-get update && apt-get install -y \
     net-tools \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user 'leo' (matching leo-lang image)
+RUN groupadd -g 1001 leo && \
+    useradd -m -s /bin/bash -u 1001 -g leo leo
+
 # Set working directory
 WORKDIR /aleo
 
@@ -110,20 +114,24 @@ COPY --from=snarkos-builder /tmp/snarkos /aleo/snarkos
 # Make binaries executable
 RUN chmod +x /usr/local/bin/leo /aleo/snarkos
 
-# Create data directory for blockchain storage
-RUN mkdir -p /data
+# Create directories with proper ownership for leo user
+# /aleo/data: blockchain storage (volume mount point)
+# /home/leo/.aleo: aleo SDK home directory for provers
+RUN mkdir -p /aleo/data && \
+    chown -R leo:leo /aleo
 
-# Verify installations
+# Verify installations (as root, before switching user)
 RUN leo --version && \
     ./snarkos --version
 
-RUN mkdir -p /.aleo
-
 # Copy download-provers.sh and set ownership
-COPY download-provers.sh /tmp/
+COPY --chmod=755 --chown=leo:leo download-provers.sh /tmp/
 
-# Run the download-provers script as leo user
-RUN DEST_DIR="/.aleo/resources/" /tmp/download-provers.sh
+# Switch to non-root user for remaining operations
+USER leo
+
+# Download provers to leo user's home directory
+RUN DEST_DIR="/home/leo/.aleo/resources/" /tmp/download-provers.sh
 
 # Set environment variables for better devnet operation
 ENV RUST_LOG=info \
@@ -135,23 +143,20 @@ ENV RUST_LOG=info \
 # 4180: Metrics (if enabled)
 EXPOSE 3030 4130 4180
 
-# Volume for logs
-VOLUME ["/data"]
-
-# Volume for persistent storage
-VOLUME ["/aleo"]
+# Volume for blockchain storage (owned by leo user)
+VOLUME ["/aleo/data"]
 
 # Default entrypoint is leo
 ENTRYPOINT ["/usr/local/bin/leo"]
 
 # Default command runs a minimal devnet
-# --storage: Use /data for blockchain storage
+# --storage: Use /aleo/data for blockchain storage
 # --clear-storage: Clean start each time
 # --yes: Auto-confirm prompts
 # --verbosity 4: Maximum debug output
 # --snarkos: Use our pre-built binary
 # --num-clients: Single client for minimal setup
-CMD ["devnet", "--storage", "/data", "--clear-storage", "--yes", "--verbosity", "4", "--snarkos", "./snarkos", "--num-clients", "1"]
+CMD ["devnet", "--storage", "/aleo/data", "--clear-storage", "--yes", "--verbosity", "4", "--snarkos", "./snarkos", "--num-clients", "1"]
 
 # Build metadata
 ARG LEO_VERSION
