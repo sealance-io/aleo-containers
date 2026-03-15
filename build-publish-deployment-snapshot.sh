@@ -94,6 +94,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Returns 0 (true) if $1 >= $2, 1 (false) otherwise.
+# Both arguments must be in X.Y.Z format.
+version_gte() {
+    local IFS=.
+    local -a v1=($1) v2=($2)
+    local i
+    for i in 0 1 2; do
+        if (( ${v1[i]:-0} > ${v2[i]:-0} )); then return 0; fi
+        if (( ${v1[i]:-0} < ${v2[i]:-0} )); then return 1; fi
+    done
+    return 0  # equal
+}
+
 # Validate aleo-devnet version against minimum requirements
 # Pre-migration images (< v3.5.0-v4.5.3) lack the leo user, breaking --chown=leo:leo
 validate_devnet_version() {
@@ -106,13 +119,12 @@ validate_devnet_version() {
         local leo_ver="${BASH_REMATCH[1]}"
         local snarkos_ver="${BASH_REMATCH[2]}"
 
-        # Compare using sort -V (version sort)
-        if [[ "$(printf '%s\n%s' "$min_leo" "$leo_ver" | sort -V | head -n1)" != "$min_leo" ]]; then
+        if ! version_gte "$leo_ver" "$min_leo"; then
             print_error "Leo version v${leo_ver} is below minimum v${min_leo}."
             print_error "Pre-migration base images lack the rootless 'leo' user and /aleo/data layout."
             exit 1
         fi
-        if [[ "$(printf '%s\n%s' "$min_snarkos" "$snarkos_ver" | sort -V | head -n1)" != "$min_snarkos" ]]; then
+        if ! version_gte "$snarkos_ver" "$min_snarkos"; then
             print_error "snarkOS version v${snarkos_ver} is below minimum v${min_snarkos}."
             print_error "Pre-migration base images lack the rootless 'leo' user and /aleo/data layout."
             exit 1
