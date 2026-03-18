@@ -39,14 +39,14 @@ usage() {
     echo ""
     echo "Options:"
     echo "  -c, --commit <sha/branch/tag>    Git commit SHA, branch, or tag to clone (default: main)"
-    echo "  -v, --version <version>          Version tag for aleo-devnet image (default: v3.5.0-v4.5.3)"
+    echo "  -v, --version <version>          Version tag for aleo-devnet image (default: v3.5.0-v4.5.4)"
     echo "  -t, --consensus-version <num>    Target consensus version for devnet (default: 13)"
     echo "  --skip-push                      Build images but skip pushing to registry (for testing)"
     echo "  -h, --help                       Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0                               # Use defaults (main branch, v3.5.0-v4.5.3)"
-    echo "  $0 -c develop -v v3.5.0-v4.5.3   # Use develop branch and v3.5.0-v4.5.3 image"
+    echo "  $0                               # Use defaults (main branch, v3.5.0-v4.5.4)"
+    echo "  $0 -c develop -v v3.5.0-v4.5.4   # Use develop branch and v3.5.0-v4.5.4 image"
     echo "  $0 --commit abc1234 --version latest"
     echo "  $0 --skip-push                   # Build locally without pushing"
     echo "  $0 -t 15                         # Use consensus version 15"
@@ -62,7 +62,7 @@ usage() {
 
 # Parse command line arguments
 GIT_REF="main"
-DEVNET_VERSION="v3.5.0-v4.5.3"
+DEVNET_VERSION="v3.5.0-v4.5.4"
 CONSENSUS_VERSION=13
 SKIP_PUSH=false
 
@@ -108,7 +108,7 @@ version_gte() {
 }
 
 # Validate aleo-devnet version against minimum requirements
-# Pre-migration images (< v3.5.0-v4.5.3) lack the leo user, breaking --chown=leo:leo
+# Pre-migration images (< v3.5.0-v4.5.4) lack the leo user, breaking --chown=leo:leo
 validate_devnet_version() {
     local version="$1"
     local min_leo="3.5.0"

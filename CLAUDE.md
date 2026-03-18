@@ -28,7 +28,7 @@ Docker containerization for the Aleo blockchain ecosystem: Leo Lang (aleo CLI) a
 ./build-publish-deployment-snapshot.sh --commit main --skip-push
 
 # Build with custom versions and consensus target (and push)
-./build-publish-deployment-snapshot.sh --commit main --version v3.5.0-v4.5.3 --consensus-version 13
+./build-publish-deployment-snapshot.sh --commit main --version v3.5.0-v4.5.4 --consensus-version 13
 ```
 
 ### Running Containers
@@ -38,10 +38,10 @@ Docker containerization for the Aleo blockchain ecosystem: Leo Lang (aleo CLI) a
 docker run --rm ghcr.io/sealance-io/leo-lang:v3.5.0 leo --help
 
 # Run Aleo devnet (Leo v3 + snarkOS)
-docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/aleo/data ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.3
+docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/aleo/data ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.4
 
 # Run local testnet with docker-compose (4 validators + 1 client)
-# NOTE: requires locally-tagged image "localhost/snarkos:devnet-v4.5.3"
+# NOTE: requires locally-tagged image "localhost/snarkos:devnet-v4.5.4"
 docker-compose up -d
 
 # Access REST API after testnet starts
@@ -157,7 +157,7 @@ In practice, inference (step 1) tries to align the base image with what the Dock
 
 **snarkOS Build Features**: `default,snarkos-node-metrics,test_network` — the `test_network` feature is required for devnet operation.
 
-**Docker Compose Network**: Uses `localhost/snarkos:devnet-v4.5.3` (locally-tagged image, not from GHCR). Fixed IP addressing (172.20.0.0/16):
+**Docker Compose Network**: Uses `localhost/snarkos:devnet-v4.5.4` (locally-tagged image, not from GHCR). Fixed IP addressing (172.20.0.0/16):
 - validator0: 172.20.0.2 (verbose logging, REST disabled)
 - validator1-3: 172.20.0.3-5 (quiet logging)
 - client0: 172.20.0.6 (REST API on port 3030)
@@ -175,7 +175,7 @@ The `CONSENSUS_VERSION_HEIGHTS` environment variable (commented out in docker-co
 
 **`build-publish-deployment-snapshot.sh`**:
 - Version format is strictly `vX.Y.Z-vA.B.C` (Leo-snarkOS)
-- Minimum versions: Leo >= v3.5.0, snarkOS >= v4.5.3 (required for non-root `leo` user and `/aleo/data` layout)
+- Minimum versions: Leo >= v3.5.0, snarkOS >= v4.5.4 (required for non-root `leo` user and `/aleo/data` layout)
 - Uses `docker cp` instead of volume mounts (Docker-in-Docker path compatibility)
 
 ### Environment Variables for Customization
@@ -183,7 +183,7 @@ The `CONSENSUS_VERSION_HEIGHTS` environment variable (commented out in docker-co
 `RUST_VERSION` is auto-inferred from the upstream `rust-toolchain.toml` — only set it to override.
 
 ```bash
-LEO_VERSION="v3.5.0" SNARKOS_VERSION="v4.5.3" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
+LEO_VERSION="v3.5.0" SNARKOS_VERSION="v4.5.4" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 LEO_REPO="https://github.com/your-fork/leo" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 NODE_VERSION=18 DEBIAN_RELEASE=bullseye ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 # Override auto-inferred Rust version (rarely needed):
@@ -195,7 +195,7 @@ RUST_VERSION=1.85.0 ./build-publish-image.sh --dockerfile leo.Dockerfile --image
 GitHub Actions workflows (in `.github/workflows/`):
 - **`build-publish-image.yml`**: Reusable workflow for multi-arch builds (called via `workflow_call`)
 - **`manual-build.yml`**: Entry point for manual builds via `workflow_dispatch`
-- **`check-updates.yml`**: Version detection — scans upstream Leo (ProvableHQ/leo) and snarkOS (ProvableHQ/snarkOS) for new releases. Minimum versions: Leo >= v3.5.0, snarkOS >= v4.5.3. The scheduled cron is currently disabled; trigger manually via `gh workflow run check-updates.yml`
+- **`check-updates.yml`**: Version detection — scans upstream Leo (ProvableHQ/leo) and snarkOS (ProvableHQ/snarkOS) for new releases. Minimum versions: Leo >= v3.5.0, snarkOS >= v4.5.4. The scheduled cron is currently disabled; trigger manually via `gh workflow run check-updates.yml`
 - **`build-publish-deployment-snapshot.yml`**: Creates pre-deployed devnet images. Uses `setup-leo-action` on the runner for Leo CLI (not Docker), and `docker cp` instead of volume mounts to avoid Docker-in-Docker path issues. Tags snapshots as `${DEVNET_VERSION}-${SHORT_SHA}`
 
 ### Triggering CI from the CLI
@@ -205,13 +205,13 @@ GitHub Actions workflows (in `.github/workflows/`):
 gh workflow run manual-build.yml -f image_name=leo-lang -f leo_version=v3.5.0
 
 # Trigger an aleo-devnet build
-gh workflow run manual-build.yml -f image_name=aleo-devnet -f leo_version=v3.5.0 -f snarkos_version=v4.5.3
+gh workflow run manual-build.yml -f image_name=aleo-devnet -f leo_version=v3.5.0 -f snarkos_version=v4.5.4
 
 # Check for upstream version updates
 gh workflow run check-updates.yml
 
 # Trigger a deployment snapshot build
-gh workflow run build-publish-deployment-snapshot.yml -f git-ref=main -f aleo-devnet-version=v3.5.0-v4.5.3
+gh workflow run build-publish-deployment-snapshot.yml -f git-ref=main -f aleo-devnet-version=v3.5.0-v4.5.4
 ```
 
 ### Build Optimizations

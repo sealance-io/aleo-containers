@@ -22,7 +22,7 @@ Pre-built images are available on GitHub Container Registry:
 - **Standard**: `ghcr.io/sealance-io/leo-lang:v3.5.0`
 
 #### Aleo Devnet
-- **Integrated**: `ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.3`
+- **Integrated**: `ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.4`
 
 ### Custom Deployment Snapshots
 - **With deployed programs**: `ghcr.io/sealance-io/aleo-devnet-custom:latest`
@@ -39,7 +39,7 @@ You can also use the `latest` tag to always get the most recent version.
 
 #### Aleo Devnet Image (`aleo-devnet`)
 - Leo CLI v3.5.0
-- snarkOS v4.5.3
+- snarkOS v4.5.4
 - Pre-downloaded mainnet prover parameters (~2GB)
 - Debian trixie (slim)
 - Essential runtime libraries
@@ -73,25 +73,25 @@ For running a local Aleo development network with Leo v3 and snarkOS:
 # Run a minimal devnet (4 validators + 1 client)
 docker run -it --rm -p 3030:3030 -p 4130:4130 \
   -v $(pwd)/data:/aleo/data \
-  ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.3
+  ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.4
 
 # Run with custom devnet parameters
 docker run -it --rm -p 3030:3030 -p 4130:4130 \
   -v $(pwd)/data:/aleo/data \
-  ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.3 \
+  ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.4 \
   devnet --storage /aleo/data --clear-storage --yes \
   --verbosity 4 --num-validators 4 --num-clients 2
 
 # Run snarkOS directly instead of Leo devnet command
 docker run -it --rm -p 3030:3030 -p 4130:4130 \
   --entrypoint ./snarkos \
-  ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.3 \
+  ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.4 \
   start --client --nodisplay --node 0.0.0.0:4130 \
   --network 1 --dev 0 --rest 0.0.0.0:3030
 
 # Access Leo CLI for development
 docker run -it --rm -v $(pwd):/app -w /app \
-  ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.3 \
+  ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.4 \
   new my_project
 ```
 #### GitHub Actions Example
@@ -239,10 +239,10 @@ The repository includes a script to create custom Aleo devnet images with pre-de
 ./build-publish-deployment-snapshot.sh --commit abc1234 --skip-push
 
 # Build with custom base image version
-./build-publish-deployment-snapshot.sh --version v3.5.0-v4.5.3 --skip-push
+./build-publish-deployment-snapshot.sh --version v3.5.0-v4.5.4 --skip-push
 
 # Build and push to registry (requires authentication)
-./build-publish-deployment-snapshot.sh --commit main --version v3.5.0-v4.5.3
+./build-publish-deployment-snapshot.sh --commit main --version v3.5.0-v4.5.4
 
 # Get help
 ./build-publish-deployment-snapshot.sh --help
@@ -277,7 +277,7 @@ NODE_VERSION=24 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-nam
 
 # Build with custom Rust version
 RUST_VERSION=1.89.0 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet --variant rust189
-# Produces: aleo-devnet:v3.5.0-v4.5.3-rust189, aleo-devnet:latest
+# Produces: aleo-devnet:v3.5.0-v4.5.4-rust189, aleo-devnet:latest
 ```
 
 ### Using environment variables
@@ -292,7 +292,7 @@ LEO_VERSION="v3.5.0" ./build-publish-image.sh --dockerfile leo.Dockerfile --imag
 LEO_REPO="https://github.com/your-fork/leo" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 
 # Override Aleo Devnet versions (Leo and snarkOS)
-LEO_VERSION="v3.5.0" SNARKOS_VERSION="v4.5.3" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
+LEO_VERSION="v3.5.0" SNARKOS_VERSION="v4.5.4" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 
 # Override Rust version for Aleo Devnet
 RUST_VERSION="1.92.0" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet

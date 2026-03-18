@@ -218,7 +218,7 @@ if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
 elif [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
   # Aleo-devnet uses both LEO and SNARKOS versions
   LEO_VERSION=${LEO_VERSION:-"v3.5.0"}
-  SNARKOS_VERSION=${SNARKOS_VERSION:-"v4.5.3"}
+  SNARKOS_VERSION=${SNARKOS_VERSION:-"v4.5.4"}
   PROJECT_VERSION="${LEO_VERSION}-${SNARKOS_VERSION}"
   # For aleo-devnet, we'll pass both versions as build args
   PROJECT_VERSION_ARG="LEO_VERSION"

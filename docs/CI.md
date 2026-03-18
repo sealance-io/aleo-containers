@@ -8,7 +8,7 @@ A weekly workflow checks for new releases of Leo and snarkOS:
 
 - Runs every Monday at 2:30 AM UTC
 - Scans both Leo and snarkOS repositories for new release tags
-- Only processes versions that meet minimum requirements (Leo >= v3.5.0, snarkOS >= v4.5.3)
+- Only processes versions that meet minimum requirements (Leo >= v3.5.0, snarkOS >= v4.5.4)
 - Compares against existing images in the registry to avoid rebuilding
 - Triggers `leo-lang` builds for new Leo versions
 - Triggers `aleo-devnet` builds for new Leo+snarkOS combinations

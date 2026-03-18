@@ -4,7 +4,7 @@
 
 # Build arguments
 ARG LEO_VERSION=v3.5.0
-ARG SNARKOS_VERSION=v4.5.3
+ARG SNARKOS_VERSION=v4.5.4
 # Used to pin Rust base images.
 ARG RUST_VERSION=1.92.0
 
