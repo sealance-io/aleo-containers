@@ -174,9 +174,7 @@ jobs:
 
       - name: Install dokojs CLI
         run: |
-          npm config set @sealance-io:registry https://npm.pkg.github.com
-          npm config set //npm.pkg.github.com/:_authToken ${{ secrets.GITHUB_TOKEN }}
-          npm install -g @sealance-io/dokojs@1.0.0 --ignore-scripts
+          npm install -g @sealance-io/dokojs@1.0.4 --ignore-scripts
           dokojs --version
 
       - name: Create data directory
