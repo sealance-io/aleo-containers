@@ -41,6 +41,7 @@ usage() {
     echo "  -c, --commit <sha/branch/tag>    Git commit SHA, branch, or tag to clone (default: main)"
     echo "  -v, --version <version>          Version tag for aleo-devnet image (default: v3.5.0-v4.5.4)"
     echo "  -t, --consensus-version <num>    Target consensus version for devnet (default: 13)"
+    echo "  -p, --required-programs <list>   Comma-separated program IDs to verify (default: from required-programs.txt)"
     echo "  --skip-push                      Build images but skip pushing to registry (for testing)"
     echo "  -h, --help                       Show this help message"
     echo ""
@@ -65,6 +66,7 @@ GIT_REF="main"
 DEVNET_VERSION="v3.5.0-v4.5.4"
 CONSENSUS_VERSION=13
 SKIP_PUSH=false
+REQUIRED_PROGRAMS=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -78,6 +80,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -t|--consensus-version)
             CONSENSUS_VERSION="$2"
+            shift 2
+            ;;
+        -p|--required-programs)
+            REQUIRED_PROGRAMS="$2"
             shift 2
             ;;
         --skip-push)
@@ -97,8 +103,9 @@ done
 # Returns 0 (true) if $1 >= $2, 1 (false) otherwise.
 # Both arguments must be in X.Y.Z format.
 version_gte() {
-    local IFS=.
-    local -a v1=($1) v2=($2)
+    local -a v1 v2
+    IFS=. read -ra v1 <<< "$1"
+    IFS=. read -ra v2 <<< "$2"
     local i
     for i in 0 1 2; do
         if (( ${v1[i]:-0} > ${v2[i]:-0} )); then return 0; fi
@@ -137,12 +144,31 @@ validate_devnet_version() {
 
 validate_devnet_version "$DEVNET_VERSION"
 
+# Resolve required programs from file if not set via CLI
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "${REQUIRED_PROGRAMS}" ]]; then
+    if [[ -f "${SCRIPT_DIR}/required-programs.txt" ]]; then
+        REQUIRED_PROGRAMS=$(grep -Ev '^[[:space:]]*#|^[[:space:]]*$' "${SCRIPT_DIR}/required-programs.txt" | tr '\n' ',' | sed 's/,$//')
+    fi
+fi
+
+# Fail closed: publish flows require a non-empty program list
+if [[ "$SKIP_PUSH" == "false" && -z "${REQUIRED_PROGRAMS}" ]]; then
+    print_error "No required programs resolved (required-programs.txt missing/empty and --required-programs not set)."
+    print_error "Cannot publish a snapshot without program verification. Use --skip-push for local-only builds."
+    exit 1
+fi
+if [[ "$SKIP_PUSH" == "true" && -z "${REQUIRED_PROGRAMS}" ]]; then
+    print_warning "No required programs resolved. Program verification will be skipped (--skip-push mode)."
+fi
+
 print_step "Configuration:"
 echo "  Git ref: ${GIT_REF}"
 echo "  Aleo Devnet version: ${DEVNET_VERSION}"
 echo "  Consensus version: ${CONSENSUS_VERSION}"
 echo "  Clone method: SSH"
 echo "  Skip push: ${SKIP_PUSH}"
+echo "  Required programs: ${REQUIRED_PROGRAMS:-<none>}"
 echo "  Dockerfile: Will be generated dynamically"
 echo ""
 
@@ -210,6 +236,13 @@ cleanup() {
         print_step "Cleaning up container ${CONTAINER_NAME}..."
         ${CONTAINER_TOOL} stop --time=10 "${CONTAINER_NAME}" &> /dev/null || true
         ${CONTAINER_TOOL} rm "${CONTAINER_NAME}" &> /dev/null || true
+    fi
+
+    # Stop and remove verification container if it exists
+    if [[ -n "${VERIFY_CONTAINER:-}" ]] && ${CONTAINER_TOOL} ps -a --format "{{.Names}}" | grep -q "^${VERIFY_CONTAINER}$"; then
+        print_step "Cleaning up verification container ${VERIFY_CONTAINER}..."
+        ${CONTAINER_TOOL} stop --time=5 "${VERIFY_CONTAINER}" &> /dev/null || true
+        ${CONTAINER_TOOL} rm "${VERIFY_CONTAINER}" &> /dev/null || true
     fi
     
     # Remove volume if it exists and we're in a failure state
@@ -355,12 +388,118 @@ if ! TESTNET_ENDPOINT="https://api.explorer.provable.com/v1" npm run compile; th
 fi
 print_success "Project compiled."
 
+# Verify that required programs are deployed on the running devnet
+verify_deployed_programs() {
+    local programs_csv="$1"
+    local endpoint="$2"
+    local max_retries=10
+    local retry_delay=3
+
+    print_step "Verifying deployed programs..."
+    local IFS=','
+    local all_ok=true
+    for program in ${programs_csv}; do
+        program=$(echo "${program}" | xargs)  # trim whitespace
+        [[ -z "$program" ]] && continue
+
+        local attempt=0
+        local found=false
+        while [[ $attempt -lt $max_retries ]]; do
+            local http_code
+            http_code=$(curl -s -o /dev/null -w "%{http_code}" "${endpoint}/testnet/program/${program}" 2>/dev/null || echo "000")
+            if [[ "$http_code" == "200" ]]; then
+                print_success "Program '${program}' verified (HTTP ${http_code})."
+                found=true
+                break
+            fi
+            attempt=$((attempt + 1))
+            if [[ $attempt -lt $max_retries ]]; then
+                print_warning "Program '${program}' not found (HTTP ${http_code}), retrying ($attempt/$max_retries)..."
+                sleep $retry_delay
+            fi
+        done
+        if [[ "$found" == "false" ]]; then
+            print_error "Program '${program}' NOT found after ${max_retries} attempts."
+            all_ok=false
+        fi
+    done
+    if [[ "$all_ok" == "false" ]]; then
+        return 1
+    fi
+    print_success "All required programs verified."
+    return 0
+}
+
+# Start a snapshot image and verify required programs are queryable (E2E)
+VERIFY_CONTAINER="snapshot-verify-${RANDOM}"
+
+verify_snapshot_image() {
+    local image="$1"
+    local programs_csv="$2"
+    local tool="$3"
+    local timeout=120
+    local port=13030
+
+    local platform="${4:-}"
+
+    print_step "E2E verification: starting snapshot image ${image}${platform:+ (${platform})}..."
+    local -a platform_args=()
+    if [[ -n "${platform}" ]]; then
+        platform_args=(--platform "${platform}")
+    fi
+    ${tool} run -d \
+        --name "${VERIFY_CONTAINER}" \
+        -p ${port}:3030 \
+        -e CLEAR_STORAGE=no \
+        "${platform_args[@]+"${platform_args[@]}"}" \
+        "${image}" || {
+        print_error "Failed to start verification container."
+        return 1
+    }
+
+    # Wait for REST API readiness
+    print_step "Waiting up to ${timeout}s for REST API on port ${port}..."
+    local elapsed=0
+    while [[ $elapsed -lt $timeout ]]; do
+        if curl -s "http://localhost:${port}/testnet/latest/height" &>/dev/null; then
+            print_success "REST API is ready (after ${elapsed}s)."
+            break
+        fi
+        sleep 5
+        elapsed=$((elapsed + 5))
+    done
+
+    if [[ $elapsed -ge $timeout ]]; then
+        print_error "REST API did not become ready within ${timeout}s."
+        ${tool} logs "${VERIFY_CONTAINER}" --tail 50 || true
+        ${tool} stop --time=5 "${VERIFY_CONTAINER}" &>/dev/null || true
+        ${tool} rm "${VERIFY_CONTAINER}" &>/dev/null || true
+        return 1
+    fi
+
+    # Verify programs
+    local result=0
+    if ! verify_deployed_programs "${programs_csv}" "http://localhost:${port}"; then
+        result=1
+    fi
+
+    # Cleanup
+    print_step "Cleaning up verification container..."
+    ${tool} stop --time=5 "${VERIFY_CONTAINER}" &>/dev/null || true
+    ${tool} rm "${VERIFY_CONTAINER}" &>/dev/null || true
+
+    if [[ $result -eq 0 ]]; then
+        print_success "E2E verification passed."
+    fi
+    return $result
+}
+
 print_step "Starting container ${CONTAINER_NAME}..."
 # Explicit devnet args work with both wrapper (passthrough) and pre-wrapper (direct leo) base images.
 # --snarkos-features test_network is required for CONSENSUS_VERSION_HEIGHTS support.
 if ! ${CONTAINER_TOOL} run -d \
     -p 3030:3030 \
-    -v "${VOLUME_NAME}:/aleo" \
+    -v "${VOLUME_NAME}:/aleo/data" \
     -e CONSENSUS_VERSION_HEIGHTS="${CONSENSUS_HEIGHTS}" \
     --name "${CONTAINER_NAME}" \
     "${DEVNET_IMAGE}" \
@@ -416,6 +555,14 @@ if ! npm run deploy:devnet; then
 fi
 print_success "Deployment completed."
 
+# Verify deployed programs before stopping
+if [[ -n "${REQUIRED_PROGRAMS}" ]]; then
+    if ! verify_deployed_programs "${REQUIRED_PROGRAMS}" "http://localhost:3030"; then
+        print_error "Program verification failed. Aborting snapshot build."
+        exit 1
+    fi
+fi
+
 # Step 5: Gracefully stop container
 print_step "Stopping container ${CONTAINER_NAME} gracefully..."
 ${CONTAINER_TOOL} stop --time=30 "${CONTAINER_NAME}"
@@ -426,15 +573,15 @@ print_step "Waiting for complete shutdown..."
 sleep 30
 
 # Step 6: Copy state from volume to host
-print_step "Creating devnet directory..."
-mkdir -p "$(pwd)/devnet"
+print_step "Creating devnet/data directory..."
+mkdir -p "$(pwd)/devnet/data"
 
 print_step "Copying state from volume to host..."
 ${CONTAINER_TOOL} run --rm \
-    -v "${VOLUME_NAME}:/aleo" \
-    -v "$(pwd)/devnet:/backup" \
-    alpine sh -c "cp -r /aleo/. /backup/"
-print_success "State copied to ./devnet"
+    -v "${VOLUME_NAME}:/data" \
+    -v "$(pwd)/devnet/data:/backup" \
+    alpine sh -c "cp -r /data/. /backup/"
+print_success "State copied to ./devnet/data"
 
 # Step 7: Cleanup container (volume is kept for now)
 print_step "Removing container ${CONTAINER_NAME}..."
@@ -472,7 +619,7 @@ LABEL org.opencontainers.image.description="Aleo devnet node with sealance-io pr
 LABEL org.opencontainers.image.base.name="ghcr.io/sealance-io/aleo-devnet:\${DEVNET_VERSION}"
 
 # Copy blockchain state with proper ownership for leo user
-COPY --chown=leo:leo ./devnet /aleo
+COPY --chown=leo:leo ./devnet/data /aleo/data
 EOF
 print_success "Dockerfile generated."
 
@@ -486,16 +633,14 @@ echo ""
 # Validate remaining prerequisites
 print_step "Validating build prerequisites..."
 
-# Check if ./devnet directory exists and has content
-if [ ! -d "./devnet" ]; then
-    print_error "./devnet directory not found. This should have been created by the deployment process."
+# Check if ./devnet/data directory exists and has content
+if [ ! -d "./devnet/data" ]; then
+    print_error "./devnet/data directory not found."
     exit 1
 fi
 
-rm -rf "$(pwd)/devnet/snarkos"
-
-if [ -z "$(ls -A ./devnet)" ]; then
-    print_error "./devnet directory is empty. Deployment may have failed."
+if [ -z "$(ls -A ./devnet/data)" ]; then
+    print_error "./devnet/data directory is empty. Deployment may have failed."
     exit 1
 fi
 
@@ -551,8 +696,8 @@ echo "  Latest Tag: ${LATEST_TAG}"
 echo ""
 
 # Show files that will be copied (including hidden files)
-print_step "Files in ./devnet directory (including hidden files):"
-ls -la ./devnet
+print_step "Files in ./devnet/data directory (including hidden files):"
+ls -la ./devnet/data
 echo ""
 
 # Function to build and push multi-platform images
@@ -664,9 +809,57 @@ build_multiplatform() {
 print_step "Starting multi-platform build for version ${VERSION_TAG}..."
 build_multiplatform "${VERSION_TAG}"
 
-# Build and push latest-tagged image
-print_step "Starting multi-platform build for latest tag..."
-build_multiplatform "${LATEST_TAG}"
+# E2E verification (between version-tag build and latest retag)
+if [[ -n "${REQUIRED_PROGRAMS}" ]]; then
+    verify_image="${IMAGE_NAME}:${VERSION_TAG}"
+    if [[ "$SKIP_PUSH" == "false" ]]; then
+        # Multi-arch push: verify both platforms
+        for platform in linux/amd64 linux/arm64; do
+            if [[ "$CONTAINER_TOOL" == "docker" ]]; then
+                print_step "Pulling ${platform} image for E2E verification..."
+                docker pull --platform "${platform}" "${verify_image}"
+            fi
+            if ! verify_snapshot_image "${verify_image}" "${REQUIRED_PROGRAMS}" "${CONTAINER_TOOL}" "${platform}"; then
+                print_error "Post-build E2E verification failed for ${platform}. NOT publishing latest tag."
+                exit 1
+            fi
+        done
+    else
+        # Local-only: verify the single platform that was built
+        if ! verify_snapshot_image "${verify_image}" "${REQUIRED_PROGRAMS}" "${CONTAINER_TOOL}"; then
+            print_error "Post-build E2E verification failed. NOT publishing latest tag."
+            exit 1
+        fi
+    fi
+fi
+
+# Retag version-tag as latest (same digest, no rebuild)
+if [[ "$CONTAINER_TOOL" == "podman" ]]; then
+    podman tag "${IMAGE_NAME}:${VERSION_TAG}-amd64" "${IMAGE_NAME}:${LATEST_TAG}-amd64"
+    podman tag "${IMAGE_NAME}:${VERSION_TAG}-arm64" "${IMAGE_NAME}:${LATEST_TAG}-arm64"
+    podman manifest rm "${IMAGE_NAME}:${LATEST_TAG}" 2>/dev/null || true
+    podman manifest create "${IMAGE_NAME}:${LATEST_TAG}"
+    podman manifest add "${IMAGE_NAME}:${LATEST_TAG}" "${IMAGE_NAME}:${LATEST_TAG}-amd64"
+    podman manifest add "${IMAGE_NAME}:${LATEST_TAG}" "${IMAGE_NAME}:${LATEST_TAG}-arm64"
+    if [[ "$SKIP_PUSH" == "false" ]]; then
+        print_step "Pushing latest manifest..."
+        podman push "${IMAGE_NAME}:${LATEST_TAG}-amd64"
+        podman push "${IMAGE_NAME}:${LATEST_TAG}-arm64"
+        podman manifest push "${IMAGE_NAME}:${LATEST_TAG}"
+        print_success "Latest manifest pushed."
+    fi
+else
+    if [[ "$SKIP_PUSH" == "false" ]]; then
+        print_step "Retagging verified image as latest in registry..."
+        docker buildx imagetools create \
+            --tag "${IMAGE_NAME}:${LATEST_TAG}" \
+            "${IMAGE_NAME}:${VERSION_TAG}"
+        print_success "Latest tag created from verified version-tag digest."
+    else
+        docker tag "${IMAGE_NAME}:${VERSION_TAG}" "${IMAGE_NAME}:${LATEST_TAG}"
+        print_success "Latest tag created locally."
+    fi
+fi
 
 # Cleanup docker buildx builder if we created one
 if [[ "$CONTAINER_TOOL" == "docker" ]] && [[ -n "${BUILDER_NAME}" ]]; then

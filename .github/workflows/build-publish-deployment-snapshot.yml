@@ -33,11 +33,16 @@ on:
         required: false
         default: 13
         type: number
+      required-programs:
+        description: 'Comma-separated program IDs to verify. Empty = read from required-programs.txt'
+        required: false
+        default: ''
+        type: string
     secrets:
       registry_token:
         description: 'Token for container registry authentication'
         required: true
-  
+
   workflow_dispatch:
     inputs:
       git-ref:
@@ -70,6 +75,11 @@ on:
         required: false
         default: 13
         type: number
+      required-programs:
+        description: 'Comma-separated program IDs to verify. Empty = read from required-programs.txt'
+        required: false
+        default: ''
+        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -139,6 +149,9 @@ jobs:
           leo --version
           echo "Cache hit (binary): ${{ steps.setup-leo.outputs.cache-hit-binary }}"
           echo "Build time: ${{ steps.setup-leo.outputs.build-time-seconds }}s"
+
+      - name: Set up QEMU (cross-platform emulation)
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -224,7 +237,7 @@ jobs:
           docker run -d \
             --name devnet \
             -p 3030:3030 \
-            -v aleo_devnet_state_volume:/aleo \
+            -v aleo_devnet_state_volume:/aleo/data \
             -e CONSENSUS_VERSION_HEIGHTS="${CONSENSUS_HEIGHTS}" \
             ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }} \
             devnet --storage /aleo/data --clear-storage --yes --verbosity 4 \
@@ -259,14 +272,76 @@ jobs:
             exit 1
           fi
 
-      - name: Run deployment and extract state
+      - name: Resolve required programs
+        id: programs
+        run: |
+          set -euo pipefail
+          PROGRAMS="${{ inputs.required-programs }}"
+          if [[ -z "$PROGRAMS" ]]; then
+            if [[ -f "required-programs.txt" ]]; then
+              PROGRAMS=$(grep -Ev '^[[:space:]]*#|^[[:space:]]*$' required-programs.txt | tr '\n' ',' | sed 's/,$//')
+              echo "Resolved from required-programs.txt: ${PROGRAMS}"
+            fi
+          else
+            echo "Using input override: ${PROGRAMS}"
+          fi
+
+          # Fail closed: publish flows require a non-empty program list
+          if [[ "${{ inputs.skip-push }}" != "true" && -z "$PROGRAMS" ]]; then
+            echo "::error::No required programs resolved (required-programs.txt missing/empty and required-programs input not set). Cannot publish without verification."
+            exit 1
+          fi
+          if [[ "${{ inputs.skip-push }}" == "true" && -z "$PROGRAMS" ]]; then
+            echo "::warning::No required programs resolved. Program verification will be skipped (skip-push mode)."
+          fi
+          echo "list=${PROGRAMS}" >> $GITHUB_OUTPUT
+
+      - name: Deploy programs
         working-directory: compliant-transfer-aleo-build
         run: |
           set -euo pipefail
-          # Deploy programs to local devnet
           npm run deploy:devnet
 
-          # Step 5: Gracefully stop container
+      - name: Verify deployed programs
+        if: ${{ steps.programs.outputs.list != '' }}
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra PROGRAMS <<< "${{ steps.programs.outputs.list }}"
+          MAX_RETRIES=10
+          RETRY_DELAY=3
+          ALL_OK=true
+
+          for program in "${PROGRAMS[@]}"; do
+            program=$(echo "$program" | xargs)
+            [[ -z "$program" ]] && continue
+            FOUND=false
+            for ((attempt=1; attempt<=MAX_RETRIES; attempt++)); do
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ env.TESTNET_ENDPOINT }}/testnet/program/${program}" 2>/dev/null || echo "000")
+              if [[ "$HTTP_CODE" == "200" ]]; then
+                echo "[SUCCESS] Program '${program}' verified (HTTP ${HTTP_CODE})."
+                FOUND=true
+                break
+              fi
+              echo "[WARNING] Program '${program}' not found (HTTP ${HTTP_CODE}), retrying (${attempt}/${MAX_RETRIES})..."
+              sleep $RETRY_DELAY
+            done
+            if [[ "$FOUND" != "true" ]]; then
+              echo "::error::Program '${program}' NOT found after ${MAX_RETRIES} attempts."
+              ALL_OK=false
+            fi
+          done
+
+          if [[ "$ALL_OK" != "true" ]]; then
+            echo "::error::Program verification failed. Aborting snapshot build."
+            exit 1
+          fi
+          echo "[SUCCESS] All required programs verified."
+
+      - name: Stop container and extract state
+        working-directory: compliant-transfer-aleo-build
+        run: |
+          set -euo pipefail
+          # Gracefully stop container
           echo "[BUILD] Stopping container devnet gracefully..."
           docker stop --timeout=30 devnet
           echo "[SUCCESS] Container stopped."
@@ -275,13 +350,13 @@ jobs:
           echo "[BUILD] Waiting for complete shutdown..."
           sleep 30
 
-          # Step 6: Copy state from container to host using docker cp
-          # Note: Using docker cp instead of volume bind mount to avoid DinD path issues
+          # Copy only blockchain data from container
           echo "[BUILD] Copying state from container to host..."
-          docker cp devnet:/aleo/. ./devnet/
-          echo "[SUCCESS] State copied to $(pwd)/devnet"
+          mkdir -p ./devnet/data
+          docker cp devnet:/aleo/data/. ./devnet/data/
+          echo "[SUCCESS] State copied to $(pwd)/devnet/data"
 
-          # Step 7: Cleanup container and volume
+          # Cleanup container and volume
           echo "[BUILD] Removing container devnet..."
           docker rm devnet || true
           echo "[BUILD] Removing volume aleo_devnet_state_volume..."
@@ -295,31 +370,25 @@ jobs:
           set -euo pipefail
           
           echo "[BUILD] Current directory: $(pwd)"
-          echo "[BUILD] Listing contents of current directory:"
-          ls -la .
-          echo "[BUILD] Checking for devnet directory..."
-          
-          # Check if ./devnet directory exists and has content
-          if [ ! -d "./devnet" ]; then
-              echo "[ERROR] ./devnet directory not found. This should have been created by the deployment process."
-              exit 1
-          fi
-          
-          echo "[BUILD] devnet directory found. Checking contents..."
-          ls -la ./devnet
-          
-          # Remove snarkos binary if it exists (as per script)
-          rm -rf ./devnet/snarkos
+          echo "[BUILD] Checking for devnet/data directory..."
 
-          # Final validation - check if directory has content after cleanup
-          if [ -z "$(ls -A ./devnet)" ]; then
-              echo "[ERROR] ./devnet directory is empty. Deployment may have failed."
-              echo "[DEBUG] Volume copy may have failed or deployment didn't create state."
+          # Check if ./devnet/data directory exists and has content
+          if [ ! -d "./devnet/data" ]; then
+              echo "[ERROR] ./devnet/data directory not found."
               exit 1
           fi
-          
-          echo "[SUCCESS] Files in ./devnet directory (including hidden files):"
-          ls -la ./devnet
+
+          echo "[BUILD] devnet/data directory found. Checking contents..."
+          ls -la ./devnet/data
+
+          # Final validation - check if directory has content
+          if [ -z "$(ls -A ./devnet/data)" ]; then
+              echo "[ERROR] ./devnet/data directory is empty. Deployment may have failed."
+              exit 1
+          fi
+
+          echo "[SUCCESS] Files in ./devnet/data directory (including hidden files):"
+          ls -la ./devnet/data
       
       - name: Generate Dockerfile
         working-directory: compliant-transfer-aleo-build
@@ -336,7 +405,7 @@ jobs:
           LABEL org.opencontainers.image.authors="Sealance.io"
 
           # Copy blockchain state with deployed contracts
-          COPY --chown=leo:leo ./devnet /aleo
+          COPY --chown=leo:leo ./devnet/data /aleo/data
           EOF
       
       - name: Extract metadata
@@ -357,7 +426,7 @@ jobs:
           echo "version-tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
           echo "image-name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ inputs.image-name }}" >> $GITHUB_OUTPUT
       
-      - name: Build and push multi-platform image
+      - name: Build and push multi-platform image (version tag only)
         if: ${{ !inputs.skip-push }}
         uses: docker/build-push-action@v5
         with:
@@ -368,7 +437,6 @@ jobs:
             DEVNET_VERSION=${{ inputs.aleo-devnet-version }}
           tags: |
             ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}
-            ${{ inputs.push-latest == 'true' && format('{0}:latest', steps.meta.outputs.image-name) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
@@ -379,8 +447,8 @@ jobs:
             org.opencontainers.image.created=${{ github.event.repository.updated_at }}
             org.opencontainers.image.revision=${{ steps.meta.outputs.full-sha }}
             org.opencontainers.image.base.name=ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
-      
-      - name: Build multi-platform image (local only)
+
+      - name: Build multi-platform image (local only, version tag)
         if: ${{ inputs.skip-push }}
         uses: docker/build-push-action@v5
         with:
@@ -393,7 +461,7 @@ jobs:
             ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          outputs: type=oci,dest=/tmp/image.tar
+          outputs: type=docker,dest=/tmp/image.tar
           labels: |
             org.opencontainers.image.title=Aleo Devnet Custom
             org.opencontainers.image.description=Aleo devnet node with pre-deployed contracts
@@ -402,6 +470,119 @@ jobs:
             org.opencontainers.image.created=${{ github.event.repository.updated_at }}
             org.opencontainers.image.revision=${{ steps.meta.outputs.full-sha }}
             org.opencontainers.image.base.name=ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
+
+      - name: Load image (skip-push mode)
+        if: ${{ inputs.skip-push }}
+        run: |
+          docker load -i /tmp/image.tar
+
+      - name: Post-build E2E verification
+        if: ${{ steps.programs.outputs.list != '' }}
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}"
+
+          # Determine platforms to verify
+          if [[ "${{ inputs.skip-push }}" == "true" ]]; then
+            PLATFORMS=("linux/amd64")
+          else
+            PLATFORMS=("linux/amd64" "linux/arm64")
+          fi
+
+          for PLAT in "${PLATFORMS[@]}"; do
+            # Pull the specific platform variant (push mode only; skip-push already loaded)
+            if [[ "${{ inputs.skip-push }}" != "true" ]]; then
+              echo "[BUILD] Pulling ${PLAT} image for E2E verification..."
+              docker pull --platform "${PLAT}" "$IMAGE"
+            fi
+            echo "::group::E2E verification for ${PLAT}"
+            TEST_CONTAINER="snapshot-verify-${PLAT//\//-}-$$"
+            PORT=13030
+
+            cleanup_verify() {
+              echo "[BUILD] Cleaning up verification container ${TEST_CONTAINER}..."
+              docker stop --time=5 "$TEST_CONTAINER" &>/dev/null || true
+              docker rm "$TEST_CONTAINER" &>/dev/null || true
+            }
+            trap cleanup_verify EXIT
+
+            echo "[BUILD] Starting snapshot image for E2E verification (${PLAT})..."
+            docker run -d \
+              --name "$TEST_CONTAINER" \
+              --platform "${PLAT}" \
+              -p ${PORT}:3030 \
+              -e CLEAR_STORAGE=no \
+              "$IMAGE"
+
+            # Wait for REST API readiness
+            TIMEOUT=120
+            ELAPSED=0
+            echo "[BUILD] Waiting up to ${TIMEOUT}s for REST API on port ${PORT}..."
+            while [[ $ELAPSED -lt $TIMEOUT ]]; do
+              if curl -s "http://localhost:${PORT}/testnet/latest/height" &>/dev/null; then
+                echo "[SUCCESS] REST API is ready (after ${ELAPSED}s)."
+                break
+              fi
+              sleep 5
+              ELAPSED=$((ELAPSED + 5))
+            done
+
+            if [[ $ELAPSED -ge $TIMEOUT ]]; then
+              echo "::error::REST API did not become ready within ${TIMEOUT}s (${PLAT})."
+              docker logs "$TEST_CONTAINER" --tail 50 || true
+              cleanup_verify
+              exit 1
+            fi
+
+            # Verify programs (with retries, same as pre-shutdown check)
+            IFS=',' read -ra PROGRAMS <<< "${{ steps.programs.outputs.list }}"
+            MAX_RETRIES=10
+            RETRY_DELAY=3
+            ALL_OK=true
+            for program in "${PROGRAMS[@]}"; do
+              program=$(echo "$program" | xargs)
+              [[ -z "$program" ]] && continue
+              FOUND=false
+              for ((attempt=1; attempt<=MAX_RETRIES; attempt++)); do
+                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${PORT}/testnet/program/${program}" 2>/dev/null || echo "000")
+                if [[ "$HTTP_CODE" == "200" ]]; then
+                  echo "[SUCCESS] E2E (${PLAT}): Program '${program}' verified."
+                  FOUND=true
+                  break
+                fi
+                echo "[WARNING] E2E (${PLAT}): Program '${program}' not found (HTTP ${HTTP_CODE}), retrying (${attempt}/${MAX_RETRIES})..."
+                sleep $RETRY_DELAY
+              done
+              if [[ "$FOUND" != "true" ]]; then
+                echo "::error::E2E (${PLAT}): Program '${program}' NOT found after ${MAX_RETRIES} attempts."
+                ALL_OK=false
+              fi
+            done
+
+            cleanup_verify
+            trap - EXIT
+
+            if [[ "$ALL_OK" != "true" ]]; then
+              echo "::error::Post-build E2E verification failed for ${PLAT}."
+              exit 1
+            fi
+            echo "[SUCCESS] Post-build E2E verification passed for ${PLAT}."
+            echo "::endgroup::"
+          done
+
+      - name: Retag verified image as latest
+        if: ${{ inputs.push-latest && !inputs.skip-push }}
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ steps.meta.outputs.image-name }}:latest \
+            ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}
+
+      - name: Tag latest locally (skip-push mode)
+        if: ${{ inputs.push-latest && inputs.skip-push }}
+        run: |
+          docker tag \
+            ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }} \
+            ${{ steps.meta.outputs.image-name }}:latest
       
       - name: Generate summary
         run: |

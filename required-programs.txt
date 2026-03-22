@@ -1,0 +1,5 @@
+# Programs that must exist in every deployment snapshot.
+# One program ID per line. Blank lines and # comments are ignored.
+# Both build-publish-deployment-snapshot.sh and the CI workflow read this file.
+# Override with --required-programs (script) or required-programs input (CI).
+merkle_tree.aleo
