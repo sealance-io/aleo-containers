@@ -4,9 +4,9 @@ This repository uses GitHub Actions to automate the building and publishing of D
 
 ## Automated Version Detection
 
-A weekly workflow checks for new releases of Leo and snarkOS:
+A workflow checks for new releases of Leo and snarkOS:
 
-- Runs every Monday at 2:30 AM UTC
+- Scheduled cron is currently disabled; trigger manually via `gh workflow run check-updates.yml`
 - Scans both Leo and snarkOS repositories for new release tags
 - Only processes versions that meet minimum requirements (Leo >= v3.5.0, snarkOS >= v4.5.4)
 - Compares against existing images in the registry to avoid rebuilding
@@ -36,8 +36,10 @@ The build system consists of these primary workflows:
 4. **Deployment Snapshot Workflow** (`build-publish-deployment-snapshot.yml`)
    - Creates custom Aleo devnet images with pre-deployed programs
    - Clones and deploys programs from compliant-transfer-aleo repository
-   - Captures blockchain state after deployment
-   - Builds multi-architecture images with the deployed state
+   - Volume mount narrowed to `/aleo/data` — only ledger state is captured
+   - 3-layer validation: pre-shutdown program verification, post-build per-platform E2E, fail-closed publish gate
+   - Latest tag is a retag of the verified version-tag digest (via `docker buildx imagetools create`), not a rebuild
+   - Reads `required-programs.txt` by default; override with `required-programs` input
 
 ## Build Optimizations
 
@@ -128,6 +130,7 @@ You can manually trigger builds through the GitHub Actions interface:
    - Aleo devnet base image version
    - Custom image name
    - Whether to push as latest
+   - Required programs to verify (optional; defaults to `required-programs.txt`)
 
 This is useful for:
 - Testing specific versions that might not be automatically detected
@@ -148,18 +151,20 @@ This is useful for:
 ### Deployment Snapshot Creation
 
 1. The workflow clones the compliant-transfer-aleo repository at the specified ref
-2. Starts an Aleo devnet container with the specified base image version
-3. Waits for the devnet to be fully initialized:
-   - Port 3030 to be accessible
-   - credits.aleo program to be available
-   - Consensus version to reach >= 13
-4. Installs dependencies and builds the programs
-5. Deploys the programs to the local devnet
-6. Stops the container and extracts the blockchain state
-7. Creates a new Docker image with the pre-deployed state
-8. Builds and pushes multi-architecture images (AMD64/ARM64)
+2. Resolves required programs from `required-programs.txt` (or the `required-programs` input override). Publish flows fail if the list is empty.
+3. Starts an Aleo devnet container with volume mounted at `/aleo/data` (only ledger state)
+4. Waits for the devnet consensus version to reach the target (default: >= 13)
+5. Installs dependencies and builds the programs
+6. Deploys the programs to the local devnet
+7. **Pre-shutdown verification**: Queries the REST API for each required program (retries up to 10x)
+8. Stops the container and extracts only `/aleo/data` to `./devnet/data/` via `docker cp`
+9. Builds the multi-architecture image (version-tag only)
+10. **Post-build E2E verification**: Boots the built image per-platform (amd64 + arm64 via QEMU), waits for REST API, re-verifies all required programs
+11. **Retags as latest**: Uses `docker buildx imagetools create` to retag the verified version-tag digest — no second build
 
 The entire process ensures:
 - New versions are automatically built while maintaining strict version requirements
-- Deployment snapshots capture a complete, ready-to-use blockchain state
+- Deployment snapshots capture only blockchain state, not runtime files from the base image
+- Required programs are verified both before shutdown and after image build (per-platform)
+- The `latest` tag always points to a verified digest — never published without E2E validation
 - All images support both x86_64 and ARM64 architectures

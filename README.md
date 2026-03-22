@@ -138,8 +138,10 @@ The project consists of the following files:
 ├── build-publish-deployment-snapshot.sh # Build script for deployment snapshots
 ├── leo.Dockerfile                       # Multi-stage Dockerfile for Leo Lang
 ├── aleo-devnet.Dockerfile               # Multi-stage Dockerfile for Aleo Devnet (Leo + snarkOS)
+├── devnet-entrypoint.sh                 # Entrypoint wrapper for aleo-devnet (log forwarding, graceful shutdown)
 ├── docker-compose.yaml                  # Docker Compose setup for local testnet
 ├── download-provers.sh                  # Script to download Aleo prover parameters
+├── required-programs.txt                # Programs that must exist in every deployment snapshot
 └── README.md                            # This documentation file
 ```
 
@@ -179,7 +181,7 @@ docker-compose ps
 docker-compose logs -f validator0
 
 # Access REST API
-curl http://localhost:3030/testnet3/latest/height
+curl http://localhost:3030/testnet/latest/height
 
 # Stop the testnet
 docker-compose down
@@ -244,17 +246,24 @@ The repository includes a script to create custom Aleo devnet images with pre-de
 # Build and push to registry (requires authentication)
 ./build-publish-deployment-snapshot.sh --commit main --version v3.5.0-v4.5.4
 
+# Override required programs for verification (default: from required-programs.txt)
+./build-publish-deployment-snapshot.sh --commit main --skip-push --required-programs "merkle_tree.aleo,custom.aleo"
+
 # Get help
 ./build-publish-deployment-snapshot.sh --help
 ```
 
 This script:
 - Clones the compliant-transfer-aleo repository
-- Starts a local Aleo devnet container
+- Starts a local Aleo devnet container (volume mounted at `/aleo/data` only)
 - Deploys programs to the devnet
-- Captures the blockchain state with deployed programs
+- Verifies required programs exist via REST API before stopping the container
+- Captures only blockchain state (not runtime files) from the container
 - Creates a new Docker image with the pre-deployed state
+- Runs post-build E2E verification per-platform (amd64 + arm64)
+- Retags the verified version-tag digest as `latest` (no rebuild)
 - Supports multi-architecture builds (AMD64 and ARM64)
+- **Fail-closed**: publish flows require a non-empty program list (from `required-programs.txt` or `--required-programs`)
 
 ### Error Recovery
 
