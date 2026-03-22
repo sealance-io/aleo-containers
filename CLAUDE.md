@@ -29,6 +29,9 @@ Docker containerization for the Aleo blockchain ecosystem: Leo Lang (aleo CLI) a
 
 # Build with custom versions and consensus target (and push)
 ./build-publish-deployment-snapshot.sh --commit main --version v3.5.0-v4.5.4 --consensus-version 13
+
+# Override required programs for verification (default: from required-programs.txt)
+./build-publish-deployment-snapshot.sh --commit main --skip-push --required-programs "merkle_tree.aleo,custom.aleo"
 ```
 
 ### Running Containers
@@ -124,7 +127,7 @@ The wrapper also provides:
 
 Generated snapshot Dockerfiles (`build-publish-deployment-snapshot.sh` and CI workflow) are minimal:
 - `FROM ghcr.io/sealance-io/aleo-devnet:${DEVNET_VERSION}`
-- `COPY --chown=leo:leo ./devnet /aleo` (pre-deployed blockchain state)
+- `COPY --chown=leo:leo ./devnet/data /aleo/data` (pre-deployed blockchain state only)
 - **No CMD or ENTRYPOINT override** — inherits base image's `CMD []` + entrypoint wrapper
 
 This means snapshot images are fully configurable via `-e` env vars, just like the base image. Passing explicit args on `docker run` overrides this as expected.
@@ -133,13 +136,29 @@ This means snapshot images are fully configurable via `-e` env vars, just like t
 
 1. Clone `sealance-io/compliant-transfer-aleo` at specified commit (SSH with fallback)
 2. `npm ci --ignore-scripts` + `npm run postinstall` + `npm run build` + `npm run compile`
-3. Start devnet container with explicit args (bypasses env-var path)
+3. Start devnet container with volume mounted at `/aleo/data` (only captures ledger state, not runtime files)
 4. Generate `CONSENSUS_VERSION_HEIGHTS=0,1,2,...,N-1` to accelerate reaching target consensus version
 5. Poll `http://localhost:3030/testnet/consensus_version` until >= target (max 100 retries, 5s apart)
 6. Deploy programs via `npm run deploy:devnet`
-7. Stop container, `docker cp devnet:/aleo/. ./devnet/` to extract state (NOT volume mount — avoids Docker-in-Docker path issues)
-8. Remove snarkos binary from captured state (already in base image)
-9. Build multi-arch image from generated Dockerfile
+7. **Pre-shutdown verification**: Query REST API for each program in `required-programs.txt` (retries up to 10x)
+8. Stop container, extract only `/aleo/data` to `./devnet/data/` (script uses alpine cp from volume; CI uses `docker cp`)
+9. Build multi-arch image (version-tag only) from generated Dockerfile
+10. **Post-build E2E verification**: Boot the built image per-platform (amd64 + arm64), wait for REST API, re-verify all required programs
+11. **Retag as latest**: `docker buildx imagetools create` (same digest, no rebuild) — only after E2E passes
+
+### Snapshot Build Validation
+
+Three-layer verification prevents publishing snapshots with missing programs:
+
+| Layer | When | What |
+|---|---|---|
+| **Volume narrowing** | Container run | Mount only `/aleo/data`, not `/aleo` — excludes `devnet-entrypoint.sh` and `snarkos` from capture |
+| **Pre-shutdown check** | After `deploy:devnet`, before stop | REST API query per program with retries |
+| **Post-build E2E** | After image build, before latest tag | Boot image per-platform, verify programs are queryable |
+
+**`required-programs.txt`** (repo root): One program ID per line (`#` comments and blank lines ignored). Both the script and CI workflow read this file as the default. Override with `--required-programs` (script) or `required-programs` input (CI).
+
+**Fail-closed policy**: Publish flows (`--skip-push=false`) **require** a non-empty program list. If `required-programs.txt` is missing/empty and no override is provided, the build aborts. Local-only builds (`--skip-push`) warn but continue without verification.
 
 ### Rust Toolchain Version Handling
 
@@ -175,8 +194,10 @@ The `CONSENSUS_VERSION_HEIGHTS` environment variable (commented out in docker-co
 
 **`build-publish-deployment-snapshot.sh`**:
 - Version format is strictly `vX.Y.Z-vA.B.C` (Leo-snarkOS)
-- Minimum versions: Leo >= v3.5.0, snarkOS >= v4.5.4 (required for non-root `leo` user and `/aleo/data` layout)
-- Uses `docker cp` instead of volume mounts (Docker-in-Docker path compatibility)
+- Minimum versions: Leo >= v3.5.0, snarkOS >= v4.5.3 (required for non-root `leo` user and `/aleo/data` layout)
+- Volume mount narrowed to `/aleo/data` — only ledger state is captured
+- Flags: `--commit`, `--version`, `--consensus-version`, `--required-programs`, `--skip-push`
+- Latest tag is a retag of the verified version-tag digest, not a second build
 
 ### Environment Variables for Customization
 
@@ -196,7 +217,7 @@ GitHub Actions workflows (in `.github/workflows/`):
 - **`build-publish-image.yml`**: Reusable workflow for multi-arch builds (called via `workflow_call`)
 - **`manual-build.yml`**: Entry point for manual builds via `workflow_dispatch`
 - **`check-updates.yml`**: Version detection — scans upstream Leo (ProvableHQ/leo) and snarkOS (ProvableHQ/snarkOS) for new releases. Minimum versions: Leo >= v3.5.0, snarkOS >= v4.5.4. The scheduled cron is currently disabled; trigger manually via `gh workflow run check-updates.yml`
-- **`build-publish-deployment-snapshot.yml`**: Creates pre-deployed devnet images. Uses `setup-leo-action` on the runner for Leo CLI (not Docker), and `docker cp` instead of volume mounts to avoid Docker-in-Docker path issues. Tags snapshots as `${DEVNET_VERSION}-${SHORT_SHA}`
+- **`build-publish-deployment-snapshot.yml`**: Creates pre-deployed devnet images. Uses `setup-leo-action` on the runner for Leo CLI (not Docker), and `docker cp` instead of volume mounts to avoid Docker-in-Docker path issues. Tags snapshots as `${DEVNET_VERSION}-${SHORT_SHA}`. Includes 3-layer validation: narrowed volume mount, pre-shutdown program verification, post-build per-platform E2E. Latest tag is a retag of the verified digest via `docker buildx imagetools create`
 
 ### Triggering CI from the CLI
 
@@ -212,6 +233,9 @@ gh workflow run check-updates.yml
 
 # Trigger a deployment snapshot build
 gh workflow run build-publish-deployment-snapshot.yml -f git-ref=main -f aleo-devnet-version=v3.5.0-v4.5.4
+
+# Trigger with custom program verification override
+gh workflow run build-publish-deployment-snapshot.yml -f git-ref=main -f aleo-devnet-version=v3.5.0-v4.5.4 -f required-programs="merkle_tree.aleo"
 ```
 
 ### Build Optimizations
