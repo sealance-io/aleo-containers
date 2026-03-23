@@ -515,7 +515,7 @@ jobs:
               "$IMAGE"
 
             # Wait for REST API readiness
-            TIMEOUT=120
+            TIMEOUT=360
             ELAPSED=0
             echo "[BUILD] Waiting up to ${TIMEOUT}s for REST API on port ${PORT}..."
             while [[ $ELAPSED -lt $TIMEOUT ]]; do
