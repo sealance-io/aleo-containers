@@ -476,20 +476,24 @@ jobs:
         run: |
           docker load -i /tmp/image.tar
 
-      - name: Post-build E2E verification
+      - name: Post-build verification
         if: ${{ steps.programs.outputs.list != '' }}
         run: |
           set -euo pipefail
           IMAGE="${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}"
 
-          # Determine platforms to verify
+          # Full runtime E2E only runs on the native amd64 path. In publish mode,
+          # verify arm64 via manifest inspection to avoid slow/flaky QEMU boot on
+          # GitHub-hosted x86 runners.
           if [[ "${{ inputs.skip-push }}" == "true" ]]; then
-            PLATFORMS=("linux/amd64")
+            RUNTIME_PLATFORMS=("linux/amd64")
+            MANIFEST_PLATFORMS=()
           else
-            PLATFORMS=("linux/amd64" "linux/arm64")
+            RUNTIME_PLATFORMS=("linux/amd64")
+            MANIFEST_PLATFORMS=("linux/arm64")
           fi
 
-          for PLAT in "${PLATFORMS[@]}"; do
+          for PLAT in "${RUNTIME_PLATFORMS[@]}"; do
             # Pull the specific platform variant (push mode only; skip-push already loaded)
             if [[ "${{ inputs.skip-push }}" != "true" ]]; then
               echo "[BUILD] Pulling ${PLAT} image for E2E verification..."
@@ -567,6 +571,26 @@ jobs:
               exit 1
             fi
             echo "[SUCCESS] Post-build E2E verification passed for ${PLAT}."
+            echo "::endgroup::"
+          done
+
+          for PLAT in "${MANIFEST_PLATFORMS[@]}"; do
+            echo "::group::Manifest inspection for ${PLAT}"
+            echo "[BUILD] Inspecting pushed manifest list for ${PLAT}..."
+            PLAT_OS="${PLAT%%/*}"
+            PLAT_ARCH="${PLAT##*/}"
+            if ! MANIFEST_JSON="$(docker manifest inspect "$IMAGE" | tr -d '\n[:space:]')"; then
+              echo "::error::Failed to inspect manifest list for ${IMAGE}."
+              exit 1
+            fi
+
+            if [[ "$MANIFEST_JSON" != *'"platform":{"architecture":"'"${PLAT_ARCH}"'","os":"'"${PLAT_OS}"'"'* ]] && \
+               [[ "$MANIFEST_JSON" != *'"platform":{"os":"'"${PLAT_OS}"'","architecture":"'"${PLAT_ARCH}"'"'* ]]; then
+              echo "::error::Manifest list for ${IMAGE} does not include ${PLAT}."
+              exit 1
+            fi
+
+            echo "[SUCCESS] Manifest list includes ${PLAT}."
             echo "::endgroup::"
           done
 

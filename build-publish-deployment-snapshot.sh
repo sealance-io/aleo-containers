@@ -494,6 +494,37 @@ verify_snapshot_image() {
     return $result
 }
 
+verify_manifest_platform() {
+    local image="$1"
+    local platform="$2"
+    local tool="$3"
+    local plat_os="${platform%%/*}"
+    local plat_arch="${platform##*/}"
+    local manifest_json=""
+
+    print_step "Inspecting manifest list for ${image} (${platform})..."
+    if [[ "${tool}" == "podman" ]]; then
+        manifest_json="$(podman manifest inspect "${image}" 2>/dev/null | tr -d '\n[:space:]')" || {
+            print_error "Failed to inspect manifest list for ${image}."
+            return 1
+        }
+    else
+        manifest_json="$(docker manifest inspect "${image}" 2>/dev/null | tr -d '\n[:space:]')" || {
+            print_error "Failed to inspect manifest list for ${image}."
+            return 1
+        }
+    fi
+
+    if [[ "${manifest_json}" != *'"platform":{"architecture":"'"${plat_arch}"'","os":"'"${plat_os}"'"'* ]] && \
+       [[ "${manifest_json}" != *'"platform":{"os":"'"${plat_os}"'","architecture":"'"${plat_arch}"'"'* ]]; then
+        print_error "Manifest list for ${image} does not include ${platform}."
+        return 1
+    fi
+
+    print_success "Manifest list includes ${platform}."
+    return 0
+}
+
 print_step "Starting container ${CONTAINER_NAME}..."
 # Explicit devnet args work with both wrapper (passthrough) and pre-wrapper (direct leo) base images.
 # --snarkos-features test_network is required for CONSENSUS_VERSION_HEIGHTS support.
@@ -809,21 +840,27 @@ build_multiplatform() {
 print_step "Starting multi-platform build for version ${VERSION_TAG}..."
 build_multiplatform "${VERSION_TAG}"
 
-# E2E verification (between version-tag build and latest retag)
+# Post-build verification (between version-tag build and latest retag)
 if [[ -n "${REQUIRED_PROGRAMS}" ]]; then
     verify_image="${IMAGE_NAME}:${VERSION_TAG}"
     if [[ "$SKIP_PUSH" == "false" ]]; then
-        # Multi-arch push: verify both platforms
-        for platform in linux/amd64 linux/arm64; do
-            if [[ "$CONTAINER_TOOL" == "docker" ]]; then
-                print_step "Pulling ${platform} image for E2E verification..."
-                docker pull --platform "${platform}" "${verify_image}"
-            fi
-            if ! verify_snapshot_image "${verify_image}" "${REQUIRED_PROGRAMS}" "${CONTAINER_TOOL}" "${platform}"; then
-                print_error "Post-build E2E verification failed for ${platform}. NOT publishing latest tag."
-                exit 1
-            fi
-        done
+        # Full runtime E2E only runs on amd64. arm64 is checked via manifest
+        # inspection because non-native arm64 boot can be slow/flaky under emulation.
+        platform="linux/amd64"
+        if [[ "$CONTAINER_TOOL" == "docker" ]]; then
+            print_step "Pulling ${platform} image for E2E verification..."
+            docker pull --platform "${platform}" "${verify_image}"
+        fi
+        if ! verify_snapshot_image "${verify_image}" "${REQUIRED_PROGRAMS}" "${CONTAINER_TOOL}" "${platform}"; then
+            print_error "Post-build E2E verification failed for ${platform}. NOT publishing latest tag."
+            exit 1
+        fi
+
+        platform="linux/arm64"
+        if ! verify_manifest_platform "${verify_image}" "${platform}" "${CONTAINER_TOOL}"; then
+            print_error "Post-build manifest verification failed for ${platform}. NOT publishing latest tag."
+            exit 1
+        fi
     else
         # Local-only: verify the single platform that was built
         if ! verify_snapshot_image "${verify_image}" "${REQUIRED_PROGRAMS}" "${CONTAINER_TOOL}"; then
