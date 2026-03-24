@@ -13,6 +13,7 @@
 #   SNARKOS_FEATURES  - snarkOS features flag (default: test_network)
 #   LOG_WAIT_SECONDS  - Seconds to wait before tailing logs (default: 5)
 #   LOG_POLL_INTERVAL - Seconds between log file discovery (default: 3)
+#   LOG_FORWARDING    - Forward snarkOS logs to stdout: true/false (default: false)
 #
 set -euo pipefail
 
@@ -24,12 +25,14 @@ readonly CLEAR_STORAGE="${CLEAR_STORAGE:-no}"
 readonly SNARKOS_FEATURES="${SNARKOS_FEATURES:-test_network}"
 readonly LOG_WAIT_SECONDS="${LOG_WAIT_SECONDS:-5}"
 readonly LOG_POLL_INTERVAL="${LOG_POLL_INTERVAL:-3}"
+readonly LOG_FORWARDING="${LOG_FORWARDING:-false}"
 
 LEO_PID=""
 LOG_WATCHER_PID=""
 SHUTDOWN_IN_PROGRESS=""
 
 log() { echo "[entrypoint] $*" >&2; }
+log_info() { [[ "${LOG_FORWARDING}" == "true" ]] && echo "[entrypoint] $*" >&2 || true; }
 
 cleanup() {
     # Guard against signal re-entry during cleanup
@@ -59,6 +62,8 @@ cleanup() {
             log "Force killing leo devnet..."
             kill -KILL "${LEO_PID}" 2>/dev/null || true
             wait "${LEO_PID}" 2>/dev/null || true
+            # Escalate: SIGKILL means unclean shutdown even if triggered by a signal
+            exit_code=1
         fi
     fi
 
@@ -66,10 +71,11 @@ cleanup() {
     exit "${exit_code}"
 }
 
-# Exit codes: 128 + signal number (INT=2, TERM=15, QUIT=3)
-trap 'cleanup 130' INT
-trap 'cleanup 143' TERM
-trap 'cleanup 131' QUIT
+# Start with exit 0 for signal-triggered shutdown (clean stop for Docker/Podman).
+# cleanup() escalates to exit 1 if leo has to be force-killed (SIGKILL).
+trap 'cleanup 0' INT
+trap 'cleanup 0' TERM
+trap 'cleanup 0' QUIT
 
 # Use find instead of globs - globs silently fail with errexit in subshells
 # and require shopt settings that don't propagate to backgrounded functions
@@ -84,7 +90,7 @@ log_watcher() {
     local current_list=""
     local tail_pid=""
 
-    log "Log watcher started, polling every ${LOG_POLL_INTERVAL}s..."
+    log_info "Log watcher started, polling every ${LOG_POLL_INTERVAL}s..."
 
     while true; do
         local new_list
@@ -104,7 +110,7 @@ log_watcher() {
                     [[ -n "$file" ]] && files+=("$file")
                 done <<< "$new_list"
 
-                log "Tailing ${#files[@]} log file(s)"
+                log_info "Tailing ${#files[@]} log file(s)"
                 # -F follows through truncation/rename (vs -f which follows the fd)
                 tail -F "${files[@]}" 2>/dev/null &
                 tail_pid=$!
@@ -125,7 +131,7 @@ main() {
         exec leo "$@"
     fi
 
-    log "Starting aleo-devnet..."
+    log_info "Starting aleo-devnet..."
     mkdir -p "${STORAGE}"
 
     local cmd
@@ -135,7 +141,7 @@ main() {
         cmd=(leo "$@")
     else
         # No args — build devnet command from environment variables.
-        log "Config: STORAGE=${STORAGE} VERBOSITY=${VERBOSITY} VALIDATORS=${NUM_VALIDATORS} CLIENTS=${NUM_CLIENTS} CLEAR=${CLEAR_STORAGE}"
+        log_info "Config: STORAGE=${STORAGE} VERBOSITY=${VERBOSITY} VALIDATORS=${NUM_VALIDATORS} CLIENTS=${NUM_CLIENTS} CLEAR=${CLEAR_STORAGE}"
         cmd=(
             leo devnet
             --storage "${STORAGE}"
@@ -149,17 +155,19 @@ main() {
         [[ -n "${SNARKOS_FEATURES}" ]] && cmd+=(--snarkos-features "${SNARKOS_FEATURES}")
     fi
 
-    log "Executing: ${cmd[*]}"
+    log_info "Executing: ${cmd[*]}"
 
     "${cmd[@]}" &
     LEO_PID=$!
-    log "Started leo devnet (PID: ${LEO_PID})"
+    log_info "Started leo devnet (PID: ${LEO_PID})"
 
-    log "Waiting ${LOG_WAIT_SECONDS}s for snarkOS to initialize..."
+    log_info "Waiting ${LOG_WAIT_SECONDS}s for snarkOS to initialize..."
     sleep "${LOG_WAIT_SECONDS}"
 
-    log_watcher &
-    LOG_WATCHER_PID=$!
+    if [[ "${LOG_FORWARDING}" == "true" ]]; then
+        log_watcher &
+        LOG_WATCHER_PID=$!
+    fi
 
     local leo_exit_code=0
     wait "${LEO_PID}" || leo_exit_code=$?

@@ -118,9 +118,10 @@ The `aleo-devnet` image uses a wrapper entrypoint with **three-way branching**:
 | `SNARKOS_FEATURES` | `test_network` | snarkOS features flag |
 | `LOG_WAIT_SECONDS` | `5` | Wait before tailing logs |
 | `LOG_POLL_INTERVAL` | `3` | Seconds between log file discovery |
+| `LOG_FORWARDING` | `false` | Forward snarkOS logs to container stdout: `true`/`false` |
 
 The wrapper also provides:
-- **Log forwarding**: Dynamically discovers snarkOS log files in `/tmp` and `${STORAGE}`, tails them to container stdout with `tail -F` (handles rotation)
+- **Log forwarding**: When `LOG_FORWARDING=true` (default), dynamically discovers snarkOS log files in `/tmp` and `${STORAGE}`, tails them to container stdout with `tail -F` (handles rotation). Set `LOG_FORWARDING=false` to suppress log tailing and informational wrapper messages (errors/shutdown messages still emitted)
 - **Graceful shutdown**: Traps SIGTERM/SIGINT/SIGQUIT, sends SIGTERM to leo, waits up to 30s, then SIGKILL
 
 ### Snapshot Images

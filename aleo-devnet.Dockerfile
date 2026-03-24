@@ -148,7 +148,8 @@ ENV STORAGE=/aleo/data \
     CLEAR_STORAGE=no \
     SNARKOS_FEATURES=test_network \
     LOG_WAIT_SECONDS=5 \
-    LOG_POLL_INTERVAL=3
+    LOG_POLL_INTERVAL=3 \
+    LOG_FORWARDING=false
 
 # Expose ports
 # 3030: REST API
