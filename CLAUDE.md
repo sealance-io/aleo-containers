@@ -59,6 +59,15 @@ echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --no-latest
 ```
 
+## Shell Script Conventions
+
+All shell scripts use `set -euo pipefail` with `IFS=$'\n\t'` and are validated with [shellcheck](https://www.shellcheck.net/). Follow the same conventions when modifying scripts. Both build scripts support `--help` for full usage details:
+
+```bash
+./build-publish-image.sh --help
+./build-publish-deployment-snapshot.sh --help
+```
+
 ## Architecture & Key Relationships
 
 ### Image Dependency Chain
@@ -121,7 +130,7 @@ The `aleo-devnet` image uses a wrapper entrypoint with **three-way branching**:
 | `LOG_FORWARDING` | `false` | Forward snarkOS logs to container stdout: `true`/`false` |
 
 The wrapper also provides:
-- **Log forwarding**: When `LOG_FORWARDING=true` (default), dynamically discovers snarkOS log files in `/tmp` and `${STORAGE}`, tails them to container stdout with `tail -F` (handles rotation). Set `LOG_FORWARDING=false` to suppress log tailing and informational wrapper messages (errors/shutdown messages still emitted)
+- **Log forwarding**: When `LOG_FORWARDING=true`, dynamically discovers snarkOS log files in `/tmp` and `${STORAGE}`, tails them to container stdout with `tail -F` (handles rotation), and emits informational wrapper messages. The default is `LOG_FORWARDING=false`, which suppresses log tailing and informational wrapper messages (errors/shutdown messages still emitted)
 - **Graceful shutdown**: Traps SIGTERM/SIGINT/SIGQUIT, sends SIGTERM to leo, waits up to 30s, then SIGKILL
 
 ### Snapshot Images
