@@ -25,13 +25,13 @@ on:
         type: boolean
         default: false
 
-permissions:
-  contents: read
-  packages: write
+# No default permissions - jobs must explicitly request what they need
+permissions: {}
 
 jobs:
   derive-params:
     runs-on: ubuntu-latest
+    permissions: {} # shell-only job, no token needed
     outputs:
       dockerfile: ${{ steps.derive.outputs.dockerfile }}
       project_version: ${{ steps.derive.outputs.project_version }}
@@ -39,16 +39,20 @@ jobs:
     steps:
       - name: Derive parameters from image name
         id: derive
+        env:
+          INPUT_IMAGE_NAME: ${{ inputs.image_name }}
+          INPUT_LEO_VERSION: ${{ inputs.leo_version }}
+          INPUT_SNARKOS_VERSION: ${{ inputs.snarkos_version }}
         run: |
-          LEO_VERSION="${{ inputs.leo_version }}"
-          SNARKOS_VERSION="${{ inputs.snarkos_version }}"
+          LEO_VERSION="${INPUT_LEO_VERSION}"
+          SNARKOS_VERSION="${INPUT_SNARKOS_VERSION}"
           SNARKOS_VERSION="${SNARKOS_VERSION:-v4.5.4}"
 
-          if [[ "${{ inputs.image_name }}" == "leo-lang" ]]; then
+          if [[ "${INPUT_IMAGE_NAME}" == "leo-lang" ]]; then
             echo "dockerfile=leo.Dockerfile" >> $GITHUB_OUTPUT
             # For leo-lang, project_version is just the Leo version
             echo "project_version=${LEO_VERSION}" >> $GITHUB_OUTPUT
-          elif [[ "${{ inputs.image_name }}" == "aleo-devnet" ]]; then
+          elif [[ "${INPUT_IMAGE_NAME}" == "aleo-devnet" ]]; then
             echo "dockerfile=aleo-devnet.Dockerfile" >> $GITHUB_OUTPUT
             # For aleo-devnet, project_version is combined: v3.5.0-v4.5.4
             echo "project_version=${LEO_VERSION}-${SNARKOS_VERSION}" >> $GITHUB_OUTPUT
@@ -58,6 +62,9 @@ jobs:
 
   build:
     needs: derive-params
+    permissions:
+      contents: read # checkout code
+      packages: write # push images to registry
     uses: ./.github/workflows/build-publish-image.yml
     with:
       image_name: ${{ inputs.image_name }}

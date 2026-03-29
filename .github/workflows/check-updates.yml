@@ -17,27 +17,34 @@ on:
         required: false
         default: 'v4.5.4'
 
+permissions: {}
+
 jobs:
   check-updates:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      packages: write
-      actions: write
+      contents: read # checkout code
+      packages: write # query registry for existing image tags
+      actions: write # trigger downstream workflows via workflow_dispatch
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Set up variables
         id: vars
+        env:
+          INPUT_MIN_LEO: ${{ inputs.minimum_leo_version || 'v3.5.0' }}
+          INPUT_MIN_SNARKOS: ${{ inputs.minimum_snarkos_version || 'v4.5.4' }}
         run: |
           echo "leo_repo=ProvableHQ/leo" >> $GITHUB_OUTPUT
           echo "snarkos_repo=ProvableHQ/snarkOS" >> $GITHUB_OUTPUT
           echo "registry=ghcr.io" >> $GITHUB_OUTPUT
           echo "organization=sealance-io" >> $GITHUB_OUTPUT
-          echo "min_leo_version=${{ inputs.minimum_leo_version || 'v3.5.0' }}" >> $GITHUB_OUTPUT
-          echo "min_snarkos_version=${{ inputs.minimum_snarkos_version || 'v4.5.4' }}" >> $GITHUB_OUTPUT
+          echo "min_leo_version=${INPUT_MIN_LEO}" >> $GITHUB_OUTPUT
+          echo "min_snarkos_version=${INPUT_MIN_SNARKOS}" >> $GITHUB_OUTPUT
 
       - name: Setup for Act detection
         id: detect_act
@@ -51,25 +58,31 @@ jobs:
           fi
 
       - name: Authenticate with Registry
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+        run: echo "${REGISTRY_TOKEN}" | docker login ghcr.io -u "${GH_ACTOR}" --password-stdin
 
       - name: Check for new Leo releases
         id: check-leo
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MIN_LEO_VERSION: ${{ steps.vars.outputs.min_leo_version }}
+          LEO_REPO: ${{ steps.vars.outputs.leo_repo }}
+          REGISTRY_ORG: ${{ steps.vars.outputs.organization }}
         run: |
-          MIN_VERSION="${{ steps.vars.outputs.min_leo_version }}"
+          MIN_VERSION="${MIN_LEO_VERSION}"
           MIN_VERSION_NORM=${MIN_VERSION#v}
 
           # Get the latest releases from GitHub
-          LATEST_TAGS=$(gh api repos/${{ steps.vars.outputs.leo_repo }}/releases --jq '.[].tag_name' | sort -V)
+          LATEST_TAGS=$(gh api "repos/${LEO_REPO}/releases" --jq '.[].tag_name' | sort -V)
 
           # Get current tags from the container registry
           readarray -t EXISTING_TAGS < <(
             curl -sSL \
               -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/orgs/${{ steps.vars.outputs.organization }}/packages/container/leo-lang/versions?per_page=100" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              "https://api.github.com/orgs/${REGISTRY_ORG}/packages/container/leo-lang/versions?per_page=100" \
             | jq -r '.[].metadata.container.tags[]' 2>/dev/null || echo ""
           )
 
@@ -111,20 +124,23 @@ jobs:
         id: check-snarkos
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MIN_SNARKOS_VERSION: ${{ steps.vars.outputs.min_snarkos_version }}
+          SNARKOS_REPO: ${{ steps.vars.outputs.snarkos_repo }}
+          REGISTRY_ORG: ${{ steps.vars.outputs.organization }}
         run: |
-          MIN_VERSION="${{ steps.vars.outputs.min_snarkos_version }}"
+          MIN_VERSION="${MIN_SNARKOS_VERSION}"
           MIN_VERSION_NORM=${MIN_VERSION#v}
 
           # Get the latest releases from GitHub
-          LATEST_TAGS=$(gh api repos/${{ steps.vars.outputs.snarkos_repo }}/releases --jq '.[].tag_name' | sort -V)
+          LATEST_TAGS=$(gh api "repos/${SNARKOS_REPO}/releases" --jq '.[].tag_name' | sort -V)
 
           # Get current aleo-devnet tags from the container registry
           # These are in format vX.Y.Z-vA.B.C (leo-snarkos)
           readarray -t EXISTING_DEVNET_TAGS < <(
             curl -sSL \
               -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/orgs/${{ steps.vars.outputs.organization }}/packages/container/aleo-devnet/versions?per_page=100" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              "https://api.github.com/orgs/${REGISTRY_ORG}/packages/container/aleo-devnet/versions?per_page=100" \
             | jq -r '.[].metadata.container.tags[]' 2>/dev/null || echo ""
           )
 
@@ -167,12 +183,15 @@ jobs:
 
       - name: Trigger Leo builds (GitHub)
         if: steps.check-leo.outputs.new_tags != '' && steps.detect_act.outputs.testing_mode != 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          LEO_NEW_TAGS: ${{ steps.check-leo.outputs.new_tags }}
+          LEO_LATEST_VERSION: ${{ steps.check-leo.outputs.latest_version }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const tags = '${{ steps.check-leo.outputs.new_tags }}'.split(',');
-            const latestVersion = '${{ steps.check-leo.outputs.latest_version }}';
+            const tags = process.env.LEO_NEW_TAGS.split(',');
+            const latestVersion = process.env.LEO_LATEST_VERSION;
 
             for (const tag of tags) {
               const isLatest = tag === latestVersion;
@@ -193,15 +212,21 @@ jobs:
 
       - name: Trigger aleo-devnet builds (GitHub)
         if: steps.detect_act.outputs.testing_mode != 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          LEO_NEW_TAGS: ${{ steps.check-leo.outputs.new_tags }}
+          LEO_LATEST_VERSION: ${{ steps.check-leo.outputs.latest_version }}
+          SNARKOS_QUALIFIED_TAGS: ${{ steps.check-snarkos.outputs.qualified_tags }}
+          SNARKOS_LATEST_VERSION: ${{ steps.check-snarkos.outputs.latest_version }}
+          EXISTING_DEVNET_TAGS: ${{ steps.check-snarkos.outputs.existing_devnet_tags }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const newLeoTags = '${{ steps.check-leo.outputs.new_tags }}'.split(',').filter(t => t);
-            const latestLeoVersion = '${{ steps.check-leo.outputs.latest_version }}';
-            const qualifiedSnarkOsTags = '${{ steps.check-snarkos.outputs.qualified_tags }}'.split(',').filter(t => t);
-            const latestSnarkOsVersion = '${{ steps.check-snarkos.outputs.latest_version }}';
-            const existingDevnetTags = '${{ steps.check-snarkos.outputs.existing_devnet_tags }}'.split(' ').filter(t => t);
+            const newLeoTags = process.env.LEO_NEW_TAGS.split(',').filter(t => t);
+            const latestLeoVersion = process.env.LEO_LATEST_VERSION;
+            const qualifiedSnarkOsTags = process.env.SNARKOS_QUALIFIED_TAGS.split(',').filter(t => t);
+            const latestSnarkOsVersion = process.env.SNARKOS_LATEST_VERSION;
+            const existingDevnetTags = process.env.EXISTING_DEVNET_TAGS.split(' ').filter(t => t);
 
             const buildsToTrigger = [];
 
@@ -265,16 +290,21 @@ jobs:
       # Mock triggers for Act testing
       - name: Mock workflow triggers for Act testing
         if: steps.detect_act.outputs.testing_mode == 'true'
+        env:
+          LEO_NEW_TAGS: ${{ steps.check-leo.outputs.new_tags }}
+          LEO_LATEST_VERSION: ${{ steps.check-leo.outputs.latest_version }}
+          SNARKOS_LATEST_VERSION: ${{ steps.check-snarkos.outputs.latest_version }}
+          SNARKOS_QUALIFIED_TAGS: ${{ steps.check-snarkos.outputs.qualified_tags }}
         run: |
           echo "===== Mock Triggers for Act Testing ====="
 
           # Process Leo triggers
-          if [ -n "${{ steps.check-leo.outputs.new_tags }}" ]; then
-            echo "Leo tags to build: ${{ steps.check-leo.outputs.new_tags }}"
-            echo "Leo latest version: ${{ steps.check-leo.outputs.latest_version }}"
+          if [ -n "${LEO_NEW_TAGS}" ]; then
+            echo "Leo tags to build: ${LEO_NEW_TAGS}"
+            echo "Leo latest version: ${LEO_LATEST_VERSION}"
 
-            IFS=',' read -ra TAGS <<< "${{ steps.check-leo.outputs.new_tags }}"
-            LATEST="${{ steps.check-leo.outputs.latest_version }}"
+            IFS=',' read -ra TAGS <<< "${LEO_NEW_TAGS}"
+            LATEST="${LEO_LATEST_VERSION}"
 
             for TAG in "${TAGS[@]}"; do
               IS_LATEST="false"
@@ -294,8 +324,8 @@ jobs:
 
           echo ""
           echo "===== snarkOS / aleo-devnet ====="
-          echo "Latest Leo: ${{ steps.check-leo.outputs.latest_version }}"
-          echo "Latest snarkOS: ${{ steps.check-snarkos.outputs.latest_version }}"
-          echo "Qualified snarkOS tags: ${{ steps.check-snarkos.outputs.qualified_tags }}"
+          echo "Latest Leo: ${LEO_LATEST_VERSION}"
+          echo "Latest snarkOS: ${SNARKOS_LATEST_VERSION}"
+          echo "Qualified snarkOS tags: ${SNARKOS_QUALIFIED_TAGS}"
           echo ""
           echo "Note: aleo-devnet builds would be triggered for new Leo+snarkOS combinations"
