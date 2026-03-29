@@ -1,0 +1,123 @@
+name: Security Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "0 0 * * 1" # Every Monday at 00:00 UTC
+
+# No default permissions - jobs must explicitly request what they need
+permissions: {}
+
+concurrency:
+  # Include event_name so scheduled/manual full scans are never canceled by push-triggered runs
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Detect if workflow files changed (skip for unrelated changes)
+  # NOTE: This replaces workflow-level `paths` filter. Equivalent to:
+  #   paths:
+  #     - ".github/workflows/**"
+  #     - ".github/zizmor.yml"
+  # Workflow-level path filters cause required status checks to remain "Pending"
+  # forever when skipped, blocking PR merges. Job-level skipping via `if:` reports
+  # "Success" for skipped jobs, allowing the security-status rollup to pass.
+  detect-changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read # checkout and diff
+    outputs:
+      workflows-changed: ${{ steps.changes.outputs.workflows }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check for workflow changes
+        id: changes
+        env:
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_BASE_REF: ${{ github.base_ref }}
+          GH_EVENT_BEFORE: ${{ github.event.before }}
+          GH_EVENT_SHA: ${{ github.sha }}
+        run: |
+          # schedule/workflow_dispatch: always run
+          if [[ "${GH_EVENT_NAME}" == "schedule" ]] || [[ "${GH_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "workflows=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # For push: compare against the "before" SHA to catch all commits in the push
+          if [[ "${GH_EVENT_NAME}" == "push" ]]; then
+            if git fetch origin "${GH_EVENT_BEFORE}" --depth=1 2>/dev/null; then
+              CHANGED=$(git diff --name-only "${GH_EVENT_BEFORE}..${GH_EVENT_SHA}" 2>/dev/null || echo "")
+            else
+              CHANGED=""
+            fi
+          else
+            # For pull_request: compare against base branch
+            git fetch origin "${GH_BASE_REF}" --depth=1 2>/dev/null || true
+            CHANGED=$(git diff --name-only "origin/${GH_BASE_REF}...HEAD" 2>/dev/null || echo "")
+          fi
+
+          # Default to true if detection fails
+          if [[ -z "$CHANGED" ]]; then
+            echo "workflows=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check for workflow file changes
+          if echo "$CHANGED" | grep -qE '^\.github/(workflows/|zizmor\.yml)'; then
+            echo "workflows=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "workflows=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  zizmor-audit:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.workflows-changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read # checkout code for analysis
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor audit
+        uses: zizmorcore/zizmor-action@0dce2577a4760a2749d8cfb7a84b7d5585ebcb7d # v0.5.0
+        with:
+          persona: ${{ github.event_name == 'schedule' && 'auditor' || 'pedantic' }}
+          min-severity: medium
+          advanced-security: false
+
+  security-status:
+    if: always()
+    needs: [detect-changes, zizmor-audit]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {} # just checks job results
+    steps:
+      - name: Check security audit status
+        env:
+          NEEDS_DETECT_CHANGES_RESULT: ${{ needs.detect-changes.result }}
+          NEEDS_ZIZMOR_AUDIT_RESULT: ${{ needs.zizmor-audit.result }}
+        run: |
+          if [[ "${NEEDS_DETECT_CHANGES_RESULT}" != "success" ]]; then
+            echo "detect-changes failed: ${NEEDS_DETECT_CHANGES_RESULT}"
+            exit 1
+          fi
+          if [[ "${NEEDS_ZIZMOR_AUDIT_RESULT}" != "success" ]] && [[ "${NEEDS_ZIZMOR_AUDIT_RESULT}" != "skipped" ]]; then
+            echo "zizmor-audit failed: ${NEEDS_ZIZMOR_AUDIT_RESULT}"
+            exit 1
+          fi
+          echo "Security audit passed"

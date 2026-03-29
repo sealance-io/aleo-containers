@@ -1,0 +1,178 @@
+name: Lint
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+# No default permissions - jobs must explicitly request what they need
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Detect if Dockerfiles or shell scripts changed (skip for unrelated changes)
+  # NOTE: This replaces workflow-level `paths` filter. Equivalent to:
+  #   paths:
+  #     - "*.Dockerfile"
+  #     - "*.sh"
+  #     - ".hadolint.yaml"
+  #     - ".shellcheckrc"
+  #     - ".github/workflows/lint.yml"
+  # Workflow-level path filters cause required status checks to remain "Pending"
+  # forever when skipped, blocking PR merges. Job-level skipping via `if:` reports
+  # "Success" for skipped jobs, allowing the lint-status rollup to pass.
+  detect-changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read # checkout and diff
+    outputs:
+      dockerfiles: ${{ steps.changes.outputs.dockerfiles }}
+      scripts: ${{ steps.changes.outputs.scripts }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check for lintable file changes
+        id: changes
+        env:
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_BASE_REF: ${{ github.base_ref }}
+          GH_EVENT_BEFORE: ${{ github.event.before }}
+          GH_EVENT_SHA: ${{ github.sha }}
+        run: |
+          # workflow_dispatch: always run
+          if [[ "${GH_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "dockerfiles=true" >> "$GITHUB_OUTPUT"
+            echo "scripts=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # For push: compare against the "before" SHA
+          if [[ "${GH_EVENT_NAME}" == "push" ]]; then
+            if git fetch origin "${GH_EVENT_BEFORE}" --depth=1 2>/dev/null; then
+              CHANGED=$(git diff --name-only "${GH_EVENT_BEFORE}..${GH_EVENT_SHA}" 2>/dev/null || echo "")
+            else
+              CHANGED=""
+            fi
+          else
+            # For pull_request: compare against base branch
+            git fetch origin "${GH_BASE_REF}" --depth=1 2>/dev/null || true
+            CHANGED=$(git diff --name-only "origin/${GH_BASE_REF}...HEAD" 2>/dev/null || echo "")
+          fi
+
+          # Default to true if detection fails
+          if [[ -z "$CHANGED" ]]; then
+            echo "dockerfiles=true" >> "$GITHUB_OUTPUT"
+            echo "scripts=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check for Dockerfile changes
+          if echo "$CHANGED" | grep -qE '(\.Dockerfile$|\.hadolint\.yaml$|\.github/workflows/lint\.yml$)'; then
+            echo "dockerfiles=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "dockerfiles=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Check for shell script changes
+          if echo "$CHANGED" | grep -qE '(\.sh$|\.shellcheckrc$|\.github/workflows/lint\.yml$)'; then
+            echo "scripts=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "scripts=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ============================================================================
+  # Dockerfile linting with Hadolint
+  # ============================================================================
+  dockerfile-lint:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.dockerfiles == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read # checkout code
+    strategy:
+      fail-fast: false
+      matrix:
+        dockerfile:
+          - leo.Dockerfile
+          - aleo-devnet.Dockerfile
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
+        with:
+          dockerfile: ${{ matrix.dockerfile }}
+          failure-threshold: error
+
+  # ============================================================================
+  # Shell script linting with ShellCheck
+  # ============================================================================
+  shellcheck:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.scripts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read # checkout code
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Run ShellCheck
+        run: shellcheck --severity=warning *.sh
+
+  # ============================================================================
+  # Lint status aggregation for branch protection
+  # ============================================================================
+  lint-status:
+    if: always()
+    needs: [detect-changes, dockerfile-lint, shellcheck]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {} # just checks job results
+    steps:
+      - name: Check lint status
+        env:
+          NEEDS_DETECT_CHANGES_RESULT: ${{ needs.detect-changes.result }}
+          NEEDS_DOCKERFILE_LINT_RESULT: ${{ needs.dockerfile-lint.result }}
+          NEEDS_SHELLCHECK_RESULT: ${{ needs.shellcheck.result }}
+        run: |
+          # detect-changes must succeed
+          if [[ "${NEEDS_DETECT_CHANGES_RESULT}" != "success" ]]; then
+            echo "detect-changes failed: ${NEEDS_DETECT_CHANGES_RESULT}"
+            exit 1
+          fi
+
+          # Other jobs can be skipped or must succeed
+          results=(
+            "dockerfile-lint:${NEEDS_DOCKERFILE_LINT_RESULT}"
+            "shellcheck:${NEEDS_SHELLCHECK_RESULT}"
+          )
+
+          for result in "${results[@]}"; do
+            job="${result%%:*}"
+            status="${result##*:}"
+            echo "$job: $status"
+            if [[ "$status" != "success" ]] && [[ "$status" != "skipped" ]]; then
+              echo "Lint failed"
+              exit 1
+            fi
+          done
+
+          echo ""
+          echo "All lint checks passed"
