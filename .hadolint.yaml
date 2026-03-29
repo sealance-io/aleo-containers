@@ -1,0 +1,15 @@
+# Hadolint configuration for Aleo container images
+# https://github.com/hadolint/hadolint#configure
+ignored:
+  # DL3008: Pin versions in apt-get install
+  # Pinning exact Debian package versions is impractical with rolling releases
+  # (trixie). Versions differ between architectures and change with each base
+  # image update. Builder stages are discarded in multi-stage builds anyway.
+  - DL3008
+
+  # DL3059: Multiple consecutive RUN instructions
+  # Intentional for Docker layer caching with the cargo-chef pattern.
+  # Separating `cargo chef cook` (cached deps) from `git clone + cargo build`
+  # (source compilation) is a deliberate optimization — merging them would
+  # defeat the purpose of cargo-chef.
+  - DL3059
