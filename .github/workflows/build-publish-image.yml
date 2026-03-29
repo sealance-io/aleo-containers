@@ -64,14 +64,13 @@ on:
         description: 'Token for container registry authentication'
         required: true
 
-# Permissions required by callers
-permissions:
-  contents: read
-  packages: write
+# No default permissions - jobs must explicitly request what they need
+permissions: {}
 
 jobs:
   determine-params:
     runs-on: ubuntu-latest
+    permissions: {} # shell-only job, no token needed
     outputs:
       project_repo: ${{ steps.set-params.outputs.project_repo }}
       project_repo_arg: ${{ steps.set-params.outputs.project_repo_arg }}
@@ -82,37 +81,48 @@ jobs:
     steps:
       - name: Set project-specific parameters
         id: set-params
+        env:
+          INPUT_REGISTRY: ${{ inputs.registry }}
+          INPUT_ORGANIZATION: ${{ inputs.organization }}
+          INPUT_IMAGE_NAME: ${{ inputs.image_name }}
+          INPUT_PROJECT_REPO: ${{ inputs.project_repo }}
         run: |
-          REGISTRY_IMAGE="${{ inputs.registry }}/${{ inputs.organization }}/${{ inputs.image_name }}"
+          REGISTRY_IMAGE="${INPUT_REGISTRY}/${INPUT_ORGANIZATION}/${INPUT_IMAGE_NAME}"
           echo "registry_image=${REGISTRY_IMAGE}" >> $GITHUB_OUTPUT
 
-          if [[ "${{ inputs.image_name }}" == "leo-lang" ]]; then
+          if [[ "${INPUT_IMAGE_NAME}" == "leo-lang" ]]; then
             echo "project_repo_arg=LEO_REPO" >> $GITHUB_OUTPUT
             echo "project_version_arg=LEO_VERSION" >> $GITHUB_OUTPUT
-            echo "project_repo=${{ inputs.project_repo || 'https://github.com/ProvableHQ/leo' }}" >> $GITHUB_OUTPUT
+            echo "project_repo=${INPUT_PROJECT_REPO:-https://github.com/ProvableHQ/leo}" >> $GITHUB_OUTPUT
             echo "uses_target=true" >> $GITHUB_OUTPUT
-          elif [[ "${{ inputs.image_name }}" == "aleo-devnet" ]]; then
+          elif [[ "${INPUT_IMAGE_NAME}" == "aleo-devnet" ]]; then
             echo "project_version_arg=LEO_VERSION" >> $GITHUB_OUTPUT
             echo "project_repo=" >> $GITHUB_OUTPUT
             echo "uses_target=false" >> $GITHUB_OUTPUT
           else
-            echo "::error::Unknown image name: ${{ inputs.image_name }}"
+            echo "::error::Unknown image name: ${INPUT_IMAGE_NAME}"
             exit 1
           fi
 
       - name: Infer Rust toolchain version
         id: infer-rust
+        env:
+          INPUT_RUST_VERSION: ${{ inputs.rust_version }}
+          INPUT_IMAGE_NAME: ${{ inputs.image_name }}
+          PROJECT_REPO: ${{ steps.set-params.outputs.project_repo }}
+          INPUT_PROJECT_VERSION: ${{ inputs.project_version }}
+          INPUT_SNARKOS_VERSION: ${{ inputs.snarkos_version }}
         run: |
-          if [[ -n "${{ inputs.rust_version }}" ]]; then
-            echo "rust_version=${{ inputs.rust_version }}" >> $GITHUB_OUTPUT
-            echo "Using explicitly provided Rust version: ${{ inputs.rust_version }}"
+          if [[ -n "${INPUT_RUST_VERSION}" ]]; then
+            echo "rust_version=${INPUT_RUST_VERSION}" >> $GITHUB_OUTPUT
+            echo "Using explicitly provided Rust version: ${INPUT_RUST_VERSION}"
           else
-            if [[ "${{ inputs.image_name }}" == "leo-lang" ]]; then
-              REPO_PATH=$(echo "${{ steps.set-params.outputs.project_repo }}" | sed -e 's|https://github.com/||' -e 's|\.git$||')
-              TAG="${{ inputs.project_version }}"
-            elif [[ "${{ inputs.image_name }}" == "aleo-devnet" ]]; then
+            if [[ "${INPUT_IMAGE_NAME}" == "leo-lang" ]]; then
+              REPO_PATH=$(echo "${PROJECT_REPO}" | sed -e 's|https://github.com/||' -e 's|\.git$||')
+              TAG="${INPUT_PROJECT_VERSION}"
+            elif [[ "${INPUT_IMAGE_NAME}" == "aleo-devnet" ]]; then
               REPO_PATH="ProvableHQ/snarkOS"
-              TAG="${{ inputs.snarkos_version || 'v4.5.4' }}"
+              TAG="${INPUT_SNARKOS_VERSION:-v4.5.4}"
             fi
 
             CHANNEL=$(curl -sSf --max-time 10 \
@@ -132,8 +142,11 @@ jobs:
   # =============================================================================
   # STANDARD IMAGE BUILDS - Parallel per-architecture using native runners
   # =============================================================================
-  build-standard:
+  build-standard: # zizmor: ignore[secrets-outside-env]
     needs: [determine-params]
+    permissions:
+      contents: read # checkout code
+      packages: write # push images to registry
     strategy:
       fail-fast: false
       matrix:
@@ -148,13 +161,15 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Login to Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ inputs.registry }}
           username: ${{ github.actor }}
@@ -162,7 +177,7 @@ jobs:
 
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ needs.determine-params.outputs.registry_image }}
           tags: |
@@ -171,7 +186,7 @@ jobs:
       - name: Build and push by digest (Leo)
         if: inputs.image_name == 'leo-lang'
         id: build-leo
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: ${{ inputs.dockerfile }}
@@ -191,7 +206,7 @@ jobs:
       - name: Build and push by digest (Aleo Devnet)
         if: inputs.image_name == 'aleo-devnet'
         id: build-devnet
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: ${{ inputs.dockerfile }}
@@ -206,14 +221,16 @@ jobs:
           cache-to: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }},mode=max
 
       - name: Export digest
+        env:
+          BUILD_DIGEST: ${{ steps.build-leo.outputs.digest || steps.build-devnet.outputs.digest }}
         run: |
-          mkdir -p ${{ runner.temp }}/digests
+          mkdir -p "${RUNNER_TEMP}/digests"
           # Get digest from whichever build step ran
-          digest="${{ steps.build-leo.outputs.digest || steps.build-devnet.outputs.digest }}"
-          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+          digest="${BUILD_DIGEST}"
+          touch "${RUNNER_TEMP}/digests/${digest#sha256:}"
 
       - name: Upload digest artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: digests-standard-${{ matrix.platform_pair }}
           path: ${{ runner.temp }}/digests/*
@@ -223,31 +240,33 @@ jobs:
   # =============================================================================
   # MERGE STANDARD IMAGE - Creates multi-arch manifest from per-arch builds
   # =============================================================================
-  merge-standard:
+  merge-standard: # zizmor: ignore[secrets-outside-env]
     needs: [determine-params, build-standard]
     runs-on: ubuntu-latest
+    permissions:
+      packages: write # push manifest to registry
 
     steps:
       - name: Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: ${{ runner.temp }}/digests
           pattern: digests-standard-*
           merge-multiple: true
 
       - name: Login to Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ inputs.registry }}
           username: ${{ github.actor }}
           password: ${{ secrets.registry_token }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ needs.determine-params.outputs.registry_image }}
           tags: |
@@ -256,11 +275,16 @@ jobs:
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
+        env:
+          REGISTRY_IMAGE: ${{ needs.determine-params.outputs.registry_image }}
         run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ needs.determine-params.outputs.registry_image }}@sha256:%s ' *)
+            $(printf "${REGISTRY_IMAGE}@sha256:%s " *)
 
       - name: Inspect image
+        env:
+          REGISTRY_IMAGE: ${{ needs.determine-params.outputs.registry_image }}
+          PROJECT_VERSION: ${{ inputs.project_version }}
         run: |
-          docker buildx imagetools inspect ${{ needs.determine-params.outputs.registry_image }}:${{ inputs.project_version }}
+          docker buildx imagetools inspect "${REGISTRY_IMAGE}:${PROJECT_VERSION}"

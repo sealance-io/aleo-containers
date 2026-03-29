@@ -81,37 +81,45 @@ on:
         default: ''
         type: string
 
+permissions: {}
+
 env:
   REGISTRY: ghcr.io
   DOCKER_BUILDKIT: 1 # enable docker buildkit
   TESTNET_ENDPOINT: "http://localhost:3030"
 
 jobs:
-  create-deployment-snapshot-image:
+  create-deployment-snapshot-image: # zizmor: ignore[secrets-outside-env]
     runs-on: ubuntu-latest
     defaults:
       run:
-        shell: bash 
+        shell: bash
     permissions:
-      contents: read
-      packages: write
-      actions: read
+      contents: read # checkout code
+      packages: write # push images to registry
+      actions: read # read workflow artifacts
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Parse Leo version from aleo-devnet-version
         id: parse-version
+        env:
+          INPUT_DEVNET_VERSION: ${{ inputs.aleo-devnet-version }}
         run: |
           # Extract Leo version from aleo-devnet-version (format: vX.Y.Z-vA.B.C)
-          LEO_VERSION=$(echo "${{ inputs.aleo-devnet-version }}" | cut -d'-' -f1 | sed 's/^v//')
+          LEO_VERSION=$(echo "${INPUT_DEVNET_VERSION}" | cut -d'-' -f1 | sed 's/^v//')
           echo "leo-version=${LEO_VERSION}" >> $GITHUB_OUTPUT
           echo "Parsed Leo version: ${LEO_VERSION}"
 
       - name: Validate aleo-devnet version
+        env:
+          INPUT_DEVNET_VERSION: ${{ inputs.aleo-devnet-version }}
         run: |
           set -euo pipefail
-          VERSION="${{ inputs.aleo-devnet-version }}"
+          VERSION="${INPUT_DEVNET_VERSION}"
           MIN_LEO="3.5.0"
           MIN_SNARKOS="4.5.3"
 
@@ -145,45 +153,50 @@ jobs:
           audit-deny-warnings: false
 
       - name: Verify Leo installation
+        env:
+          CACHE_HIT_BINARY: ${{ steps.setup-leo.outputs.cache-hit-binary }}
+          BUILD_TIME_SECONDS: ${{ steps.setup-leo.outputs.build-time-seconds }}
         run: |
           leo --version
-          echo "Cache hit (binary): ${{ steps.setup-leo.outputs.cache-hit-binary }}"
-          echo "Build time: ${{ steps.setup-leo.outputs.build-time-seconds }}s"
+          echo "Cache hit (binary): ${CACHE_HIT_BINARY}"
+          echo "Build time: ${BUILD_TIME_SECONDS}s"
 
       - name: Set up QEMU (cross-platform emulation)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
       - name: Login to Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ github.event_name == 'workflow_dispatch' && secrets.GITHUB_TOKEN || secrets.registry_token }}
 
       - name: Clone target repository
+        env:
+          INPUT_GIT_REF: ${{ inputs.git-ref }}
         run: |
           set -euo pipefail
-          echo "Cloning repository with ref: ${{ inputs.git-ref }}"
-          git clone --depth 1 --branch "${{ inputs.git-ref }}" \
+          echo "Cloning repository with ref: ${INPUT_GIT_REF}"
+          git clone --depth 1 --branch "${INPUT_GIT_REF}" \
             https://github.com/sealance-io/compliant-transfer-aleo.git \
             compliant-transfer-aleo-build 2>/dev/null || {
             # If branch clone fails, try as a commit/tag
             git clone https://github.com/sealance-io/compliant-transfer-aleo.git \
               compliant-transfer-aleo-build
             cd compliant-transfer-aleo-build
-            git checkout "${{ inputs.git-ref }}"
+            git checkout "${INPUT_GIT_REF}"
             cd ..
           }
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: 'compliant-transfer-aleo-build/.nvmrc'
           cache-dependency-path: compliant-transfer-aleo-build/package-lock.json
-          cache: 'npm'
+          cache: 'npm' # zizmor: ignore[cache-poisoning] -- no PR trigger; workflow_dispatch/workflow_call only
 
       - name: Install dokojs CLI
         run: |
@@ -222,15 +235,18 @@ jobs:
 
       - name: Bootstrap aleo-devnet
         working-directory: compliant-transfer-aleo-build
+        env:
+          INPUT_CONSENSUS_VERSION: ${{ inputs.consensus-version }}
+          INPUT_DEVNET_VERSION: ${{ inputs.aleo-devnet-version }}
         run: |
           set -euo pipefail
 
           # Generate consensus version heights (0 to consensus-version - 1)
-          CONSENSUS_VERSION=${{ inputs.consensus-version }}
+          CONSENSUS_VERSION=${INPUT_CONSENSUS_VERSION}
           CONSENSUS_HEIGHTS=$(seq 0 $((CONSENSUS_VERSION - 1)) | tr '\n' ',' | sed 's/,$//')
           echo "[BUILD] Using consensus heights: ${CONSENSUS_HEIGHTS}"
 
-          docker pull ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }}
+          docker pull "ghcr.io/sealance-io/aleo-devnet:${INPUT_DEVNET_VERSION}"
           docker volume create aleo_devnet_state_volume
           # Explicit devnet args work with both wrapper (passthrough) and pre-wrapper (direct leo) base images.
           # --snarkos-features test_network is required for CONSENSUS_VERSION_HEIGHTS support.
@@ -239,19 +255,21 @@ jobs:
             -p 3030:3030 \
             -v aleo_devnet_state_volume:/aleo/data \
             -e CONSENSUS_VERSION_HEIGHTS="${CONSENSUS_HEIGHTS}" \
-            ghcr.io/sealance-io/aleo-devnet:${{ inputs.aleo-devnet-version }} \
+            "ghcr.io/sealance-io/aleo-devnet:${INPUT_DEVNET_VERSION}" \
             devnet --storage /aleo/data --clear-storage --yes --verbosity 4 \
             --snarkos ./snarkos --num-clients 1 --snarkos-features test_network
 
       - name: Wait for devnet to reach consensus version
+        env:
+          INPUT_CONSENSUS_VERSION: ${{ inputs.consensus-version }}
         run: |
           set -euo pipefail
-          TARGET_CONSENSUS=${{ inputs.consensus-version }}
+          TARGET_CONSENSUS=${INPUT_CONSENSUS_VERSION}
           echo "[BUILD] Waiting for devnet to reach consensus version >= ${TARGET_CONSENSUS}..."
           RETRY_COUNT=0
           MAX_RETRIES=100
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            CONSENSUS_VERSION=$(curl -s "${{ env.TESTNET_ENDPOINT }}/testnet/consensus_version" 2>/dev/null || echo "")
+            CONSENSUS_VERSION=$(curl -s "${TESTNET_ENDPOINT}/testnet/consensus_version" 2>/dev/null || echo "")
             if [ -n "$CONSENSUS_VERSION" ] && [ "$CONSENSUS_VERSION" -ge "$TARGET_CONSENSUS" ] 2>/dev/null; then
               echo "[SUCCESS] Devnet consensus version is $CONSENSUS_VERSION (>= ${TARGET_CONSENSUS})."
               break
@@ -274,9 +292,12 @@ jobs:
 
       - name: Resolve required programs
         id: programs
+        env:
+          INPUT_REQUIRED_PROGRAMS: ${{ inputs.required-programs }}
+          INPUT_SKIP_PUSH: ${{ inputs.skip-push }}
         run: |
           set -euo pipefail
-          PROGRAMS="${{ inputs.required-programs }}"
+          PROGRAMS="${INPUT_REQUIRED_PROGRAMS}"
           if [[ -z "$PROGRAMS" ]]; then
             if [[ -f "required-programs.txt" ]]; then
               PROGRAMS=$(grep -Ev '^[[:space:]]*#|^[[:space:]]*$' required-programs.txt | tr '\n' ',' | sed 's/,$//')
@@ -287,11 +308,11 @@ jobs:
           fi
 
           # Fail closed: publish flows require a non-empty program list
-          if [[ "${{ inputs.skip-push }}" != "true" && -z "$PROGRAMS" ]]; then
+          if [[ "${INPUT_SKIP_PUSH}" != "true" && -z "$PROGRAMS" ]]; then
             echo "::error::No required programs resolved (required-programs.txt missing/empty and required-programs input not set). Cannot publish without verification."
             exit 1
           fi
-          if [[ "${{ inputs.skip-push }}" == "true" && -z "$PROGRAMS" ]]; then
+          if [[ "${INPUT_SKIP_PUSH}" == "true" && -z "$PROGRAMS" ]]; then
             echo "::warning::No required programs resolved. Program verification will be skipped (skip-push mode)."
           fi
           echo "list=${PROGRAMS}" >> $GITHUB_OUTPUT
@@ -304,9 +325,11 @@ jobs:
 
       - name: Verify deployed programs
         if: ${{ steps.programs.outputs.list != '' }}
+        env:
+          PROGRAMS_LIST: ${{ steps.programs.outputs.list }}
         run: |
           set -euo pipefail
-          IFS=',' read -ra PROGRAMS <<< "${{ steps.programs.outputs.list }}"
+          IFS=',' read -ra PROGRAMS <<< "${PROGRAMS_LIST}"
           MAX_RETRIES=10
           RETRY_DELAY=3
           ALL_OK=true
@@ -316,7 +339,7 @@ jobs:
             [[ -z "$program" ]] && continue
             FOUND=false
             for ((attempt=1; attempt<=MAX_RETRIES; attempt++)); do
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ env.TESTNET_ENDPOINT }}/testnet/program/${program}" 2>/dev/null || echo "000")
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${TESTNET_ENDPOINT}/testnet/program/${program}" 2>/dev/null || echo "000")
               if [[ "$HTTP_CODE" == "200" ]]; then
                 echo "[SUCCESS] Program '${program}' verified (HTTP ${HTTP_CODE})."
                 FOUND=true
@@ -368,7 +391,7 @@ jobs:
         working-directory: compliant-transfer-aleo-build
         run: |
           set -euo pipefail
-          
+
           echo "[BUILD] Current directory: $(pwd)"
           echo "[BUILD] Checking for devnet/data directory..."
 
@@ -389,7 +412,7 @@ jobs:
 
           echo "[SUCCESS] Files in ./devnet/data directory (including hidden files):"
           ls -la ./devnet/data
-      
+
       - name: Generate Dockerfile
         working-directory: compliant-transfer-aleo-build
         run: |
@@ -407,28 +430,32 @@ jobs:
           # Copy blockchain state with deployed contracts
           COPY --chown=leo:leo ./devnet/data /aleo/data
           EOF
-      
+
       - name: Extract metadata
         id: meta
         working-directory: compliant-transfer-aleo-build
+        env:
+          INPUT_DEVNET_VERSION: ${{ inputs.aleo-devnet-version }}
+          INPUT_IMAGE_NAME: ${{ inputs.image-name }}
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
           # Get git commit info
           SHORT_SHA=$(git rev-parse --short=8 HEAD)
           FULL_SHA=$(git rev-parse HEAD)
-          
+
           # Generate version tag
-          VERSION_TAG="${{ inputs.aleo-devnet-version }}-${SHORT_SHA}"
-          
+          VERSION_TAG="${INPUT_DEVNET_VERSION}-${SHORT_SHA}"
+
           # Set outputs
           echo "short-sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
           echo "full-sha=${FULL_SHA}" >> $GITHUB_OUTPUT
           echo "version-tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
-          echo "image-name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ inputs.image-name }}" >> $GITHUB_OUTPUT
-      
+          echo "image-name=${REGISTRY}/${REPO_OWNER}/${INPUT_IMAGE_NAME}" >> $GITHUB_OUTPUT
+
       - name: Build and push multi-platform image (version tag only)
         if: ${{ !inputs.skip-push }}
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: compliant-transfer-aleo-build
           platforms: linux/amd64,linux/arm64
@@ -450,7 +477,7 @@ jobs:
 
       - name: Build multi-platform image (local only, version tag)
         if: ${{ inputs.skip-push }}
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: compliant-transfer-aleo-build
           platforms: linux/amd64
@@ -478,14 +505,19 @@ jobs:
 
       - name: Post-build verification
         if: ${{ steps.programs.outputs.list != '' }}
+        env:
+          META_IMAGE_NAME: ${{ steps.meta.outputs.image-name }}
+          META_VERSION_TAG: ${{ steps.meta.outputs.version-tag }}
+          INPUT_SKIP_PUSH: ${{ inputs.skip-push }}
+          PROGRAMS_LIST: ${{ steps.programs.outputs.list }}
         run: |
           set -euo pipefail
-          IMAGE="${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}"
+          IMAGE="${META_IMAGE_NAME}:${META_VERSION_TAG}"
 
           # Full runtime E2E only runs on the native amd64 path. In publish mode,
           # verify arm64 via manifest inspection to avoid slow/flaky QEMU boot on
           # GitHub-hosted x86 runners.
-          if [[ "${{ inputs.skip-push }}" == "true" ]]; then
+          if [[ "${INPUT_SKIP_PUSH}" == "true" ]]; then
             RUNTIME_PLATFORMS=("linux/amd64")
             MANIFEST_PLATFORMS=()
           else
@@ -495,7 +527,7 @@ jobs:
 
           for PLAT in "${RUNTIME_PLATFORMS[@]}"; do
             # Pull the specific platform variant (push mode only; skip-push already loaded)
-            if [[ "${{ inputs.skip-push }}" != "true" ]]; then
+            if [[ "${INPUT_SKIP_PUSH}" != "true" ]]; then
               echo "[BUILD] Pulling ${PLAT} image for E2E verification..."
               docker pull --platform "${PLAT}" "$IMAGE"
             fi
@@ -539,7 +571,7 @@ jobs:
             fi
 
             # Verify programs (with retries, same as pre-shutdown check)
-            IFS=',' read -ra PROGRAMS <<< "${{ steps.programs.outputs.list }}"
+            IFS=',' read -ra PROGRAMS <<< "${PROGRAMS_LIST}"
             MAX_RETRIES=10
             RETRY_DELAY=3
             ALL_OK=true
@@ -596,47 +628,65 @@ jobs:
 
       - name: Retag verified image as latest
         if: ${{ inputs.push-latest && !inputs.skip-push }}
+        env:
+          META_IMAGE_NAME: ${{ steps.meta.outputs.image-name }}
+          META_VERSION_TAG: ${{ steps.meta.outputs.version-tag }}
         run: |
           docker buildx imagetools create \
-            --tag ${{ steps.meta.outputs.image-name }}:latest \
-            ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}
+            --tag "${META_IMAGE_NAME}:latest" \
+            "${META_IMAGE_NAME}:${META_VERSION_TAG}"
 
       - name: Tag latest locally (skip-push mode)
         if: ${{ inputs.push-latest && inputs.skip-push }}
+        env:
+          META_IMAGE_NAME: ${{ steps.meta.outputs.image-name }}
+          META_VERSION_TAG: ${{ steps.meta.outputs.version-tag }}
         run: |
           docker tag \
-            ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }} \
-            ${{ steps.meta.outputs.image-name }}:latest
-      
+            "${META_IMAGE_NAME}:${META_VERSION_TAG}" \
+            "${META_IMAGE_NAME}:latest"
+
       - name: Generate summary
+        env:
+          TRIGGER_TEXT: ${{ github.event_name == 'workflow_dispatch' && 'Manual dispatch' || 'Workflow call' }}
+          GH_ACTOR: ${{ github.actor }}
+          INPUT_DEVNET_VERSION: ${{ inputs.aleo-devnet-version }}
+          INPUT_GIT_REF: ${{ inputs.git-ref }}
+          META_FULL_SHA: ${{ steps.meta.outputs.full-sha }}
+          HEADER_TEXT: ${{ inputs.skip-push && 'Built Images (not pushed)' || 'Published Images' }}
+          META_IMAGE_NAME: ${{ steps.meta.outputs.image-name }}
+          META_VERSION_TAG: ${{ steps.meta.outputs.version-tag }}
+          LATEST_LINE: ${{ inputs.push-latest == 'true' && !inputs.skip-push && format('- `{0}:latest`', steps.meta.outputs.image-name) || '' }}
+          SKIP_PUSH_COMMENT: ${{ inputs.skip-push && '# Image built locally only (not pushed to registry)' || '' }}
+          PULL_COMMAND: ${{ !inputs.skip-push && format('docker pull {0}:{1}', steps.meta.outputs.image-name, steps.meta.outputs.version-tag) || '' }}
         run: |
           set -euo pipefail
           cat >> $GITHUB_STEP_SUMMARY << EOF
           # Build Summary
-          
+
           ## 🚀 Custom Aleo Devnet Chain Image Built Successfully!
-          
+
           ### Build Information
-          - **Triggered by**: ${{ github.event_name == 'workflow_dispatch' && 'Manual dispatch' || 'Workflow call' }}
-          - **Actor**: @${{ github.actor }}
-          
+          - **Triggered by**: ${TRIGGER_TEXT}
+          - **Actor**: @${GH_ACTOR}
+
           ### Image Details
-          - **Base Version**: \`${{ inputs.aleo-devnet-version }}\`
-          - **Git Reference**: \`${{ inputs.git-ref }}\`
-          - **Git SHA**: \`${{ steps.meta.outputs.full-sha }}\`
-          
-          ### ${{ inputs.skip-push && 'Built Images (not pushed)' || 'Published Images' }}
-          - \`${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}\`
-          ${{ inputs.push-latest == 'true' && !inputs.skip-push && format('- `{0}:latest`', steps.meta.outputs.image-name) || '' }}
-          
+          - **Base Version**: \`${INPUT_DEVNET_VERSION}\`
+          - **Git Reference**: \`${INPUT_GIT_REF}\`
+          - **Git SHA**: \`${META_FULL_SHA}\`
+
+          ### ${HEADER_TEXT}
+          - \`${META_IMAGE_NAME}:${META_VERSION_TAG}\`
+          ${LATEST_LINE}
+
           ### Platforms
           - ✅ linux/amd64 (x86_64)
           - ✅ linux/arm64 (ARM64/Apple Silicon)
-          
+
           ### Usage
           \`\`\`bash
-          ${{ inputs.skip-push && '# Image built locally only (not pushed to registry)' || '' }}
-          ${{ !inputs.skip-push && format('docker pull {0}:{1}', steps.meta.outputs.image-name, steps.meta.outputs.version-tag) || '' }}
-          docker run -p 3030:3030 ${{ steps.meta.outputs.image-name }}:${{ steps.meta.outputs.version-tag }}
+          ${SKIP_PUSH_COMMENT}
+          ${PULL_COMMAND}
+          docker run -p 3030:3030 ${META_IMAGE_NAME}:${META_VERSION_TAG}
           \`\`\`
           EOF
