@@ -20,11 +20,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Detect if workflow files changed (skip for unrelated changes)
+  # Detect if workflow/Dockerfile files changed (skip for unrelated changes)
   # NOTE: This replaces workflow-level `paths` filter. Equivalent to:
   #   paths:
   #     - ".github/workflows/**"
   #     - ".github/zizmor.yml"
+  #     - "*.Dockerfile"
   # Workflow-level path filters cause required status checks to remain "Pending"
   # forever when skipped, blocking PR merges. Job-level skipping via `if:` reports
   # "Success" for skipped jobs, allowing the security-status rollup to pass.
@@ -35,13 +36,14 @@ jobs:
       contents: read # checkout and diff
     outputs:
       workflows-changed: ${{ steps.changes.outputs.workflows }}
+      dockerfiles-changed: ${{ steps.changes.outputs.dockerfiles }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Check for workflow changes
+      - name: Check for workflow and Dockerfile changes
         id: changes
         env:
           GH_EVENT_NAME: ${{ github.event_name }}
@@ -49,9 +51,10 @@ jobs:
           GH_EVENT_BEFORE: ${{ github.event.before }}
           GH_EVENT_SHA: ${{ github.sha }}
         run: |
-          # schedule/workflow_dispatch: always run
+          # schedule/workflow_dispatch: always run everything
           if [[ "${GH_EVENT_NAME}" == "schedule" ]] || [[ "${GH_EVENT_NAME}" == "workflow_dispatch" ]]; then
             echo "workflows=true" >> "$GITHUB_OUTPUT"
+            echo "dockerfiles=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -71,6 +74,7 @@ jobs:
           # Default to true if detection fails
           if [[ -z "$CHANGED" ]]; then
             echo "workflows=true" >> "$GITHUB_OUTPUT"
+            echo "dockerfiles=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -81,6 +85,16 @@ jobs:
             echo "workflows=false" >> "$GITHUB_OUTPUT"
           fi
 
+          # Check for Dockerfile changes
+          if echo "$CHANGED" | grep -qE '\.Dockerfile$'; then
+            echo "dockerfiles=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "dockerfiles=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ============================================================================
+  # Workflow security audit (zizmor)
+  # ============================================================================
   zizmor-audit:
     needs: detect-changes
     if: needs.detect-changes.outputs.workflows-changed == 'true'
@@ -100,9 +114,134 @@ jobs:
           min-severity: medium
           advanced-security: false
 
+  # ============================================================================
+  # Dockerfile misconfiguration scan (Trivy config mode)
+  # Runs on PR/push when Dockerfiles change. Fails on HIGH/CRITICAL.
+  #
+  # NOTE: Uses setup-trivy (binary-only install) instead of trivy-action.
+  # The trivy-action tags were mass-repointed to malicious commits in the
+  # March 2026 supply chain attack. setup-trivy was not affected.
+  # ============================================================================
+  trivy-dockerfile-scan:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.dockerfiles-changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read # checkout code for scanning
+    strategy:
+      fail-fast: false
+      matrix:
+        dockerfile:
+          - leo.Dockerfile
+          - aleo-devnet.Dockerfile
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        with:
+          cache: true
+
+      - name: Run Trivy config scan
+        env:
+          DOCKERFILE: ${{ matrix.dockerfile }}
+        run: |
+          trivy config \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --format table \
+            "${DOCKERFILE}"
+
+  # ============================================================================
+  # Published image vulnerability scan (Trivy image mode)
+  # Runs on schedule/manual only. Report-only (exit-code 0) — upstream CVEs
+  # may not be immediately fixable.
+  # ============================================================================
+  trivy-image-scan:
+    needs: detect-changes
+    if: >-
+      github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read # setup-trivy cache restore
+      packages: read # pull images from GHCR
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - ghcr.io/sealance-io/leo-lang:latest
+          - ghcr.io/sealance-io/aleo-devnet:latest
+    steps:
+      - name: Login to GHCR
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        with:
+          cache: true
+
+      - name: Run Trivy image scan
+        env:
+          IMAGE_REF: ${{ matrix.image }}
+        run: |
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --exit-code 0 \
+            --format table \
+            --scanners vuln \
+            "${IMAGE_REF}"
+
+  # ============================================================================
+  # Published image vulnerability scan (Grype)
+  # Second scanner for vulnerability database diversity. Report-only.
+  # ============================================================================
+  grype-image-scan:
+    needs: detect-changes
+    if: >-
+      github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read # scan-action workspace context
+      packages: read # pull images from GHCR
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - ghcr.io/sealance-io/leo-lang:latest
+          - ghcr.io/sealance-io/aleo-devnet:latest
+    steps:
+      - name: Login to GHCR
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Grype image scan
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: ${{ matrix.image }}
+          severity-cutoff: high
+          fail-build: "false"
+          output-format: table
+
+  # ============================================================================
+  # Security status aggregation for branch protection
+  # ============================================================================
   security-status:
     if: always()
-    needs: [detect-changes, zizmor-audit]
+    needs: [detect-changes, zizmor-audit, trivy-dockerfile-scan, trivy-image-scan, grype-image-scan]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {} # just checks job results
@@ -111,13 +250,33 @@ jobs:
         env:
           NEEDS_DETECT_CHANGES_RESULT: ${{ needs.detect-changes.result }}
           NEEDS_ZIZMOR_AUDIT_RESULT: ${{ needs.zizmor-audit.result }}
+          NEEDS_TRIVY_DOCKERFILE_RESULT: ${{ needs.trivy-dockerfile-scan.result }}
+          NEEDS_TRIVY_IMAGE_RESULT: ${{ needs.trivy-image-scan.result }}
+          NEEDS_GRYPE_IMAGE_RESULT: ${{ needs.grype-image-scan.result }}
         run: |
+          # detect-changes must succeed
           if [[ "${NEEDS_DETECT_CHANGES_RESULT}" != "success" ]]; then
             echo "detect-changes failed: ${NEEDS_DETECT_CHANGES_RESULT}"
             exit 1
           fi
-          if [[ "${NEEDS_ZIZMOR_AUDIT_RESULT}" != "success" ]] && [[ "${NEEDS_ZIZMOR_AUDIT_RESULT}" != "skipped" ]]; then
-            echo "zizmor-audit failed: ${NEEDS_ZIZMOR_AUDIT_RESULT}"
-            exit 1
-          fi
+
+          # All other jobs can be skipped or must succeed
+          results=(
+            "zizmor-audit:${NEEDS_ZIZMOR_AUDIT_RESULT}"
+            "trivy-dockerfile-scan:${NEEDS_TRIVY_DOCKERFILE_RESULT}"
+            "trivy-image-scan:${NEEDS_TRIVY_IMAGE_RESULT}"
+            "grype-image-scan:${NEEDS_GRYPE_IMAGE_RESULT}"
+          )
+
+          for result in "${results[@]}"; do
+            job="${result%%:*}"
+            status="${result##*:}"
+            echo "$job: $status"
+            if [[ "$status" != "success" ]] && [[ "$status" != "skipped" ]]; then
+              echo "Security audit failed: $job"
+              exit 1
+            fi
+          done
+
+          echo ""
           echo "Security audit passed"

@@ -44,7 +44,7 @@ ARG SNARKOS_VERSION
 
 # Install cargo-chef and build dependencies
 RUN cargo install cargo-chef \
-    && apt-get update && apt-get install -y \
+    && apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     clang \
     cmake \
@@ -88,7 +88,7 @@ RUN cp /build/rust-toolchain.toml /src/snarkOS/rust-toolchain.toml \
 FROM debian:trixie-slim
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
     libcurl4 \
