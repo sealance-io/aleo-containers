@@ -1,0 +1,6 @@
+# zizmor configuration
+# https://docs.zizmor.sh/configuration/
+#
+# All security checks are enabled by default.
+# Inline `# zizmor: ignore[rule]` comments in workflows handle justified exceptions.
+rules: {}
