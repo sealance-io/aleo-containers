@@ -105,6 +105,7 @@ WORKDIR /app
 RUN chown -R leo:leo /app
 
 # Add version verification script
+# hadolint ignore=SC2016
 RUN echo '#!/bin/sh' > /usr/local/bin/check-versions \
     && echo 'echo "Installed tools:"' >> /usr/local/bin/check-versions \
     && echo 'echo "- Leo: $(leo --version)"' >> /usr/local/bin/check-versions \
@@ -120,6 +121,9 @@ USER leo
 
 # Run the download-provers script as leo user
 RUN DEST_DIR="/.aleo/resources/" /tmp/download-provers.sh
+
+# CLI tool image — no long-running service to health-check
+HEALTHCHECK NONE
 
 # Default command to show installed versions
 CMD ["check-versions"]
