@@ -160,6 +160,10 @@ EXPOSE 3030 4130 4180
 # Volume for blockchain storage (owned by leo user)
 VOLUME ["/aleo/data"]
 
+# Health check via REST API (generous start-period for devnet bootstrap)
+HEALTHCHECK --interval=10s --timeout=10s --start-period=300s --retries=60 \
+    CMD bash -c 'exec 3<>/dev/tcp/localhost/3030 && echo -e "GET /testnet/latest/height HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && head -1 <&3 | grep -q 200'
+
 # Default entrypoint uses wrapper script for log forwarding
 # The wrapper script:
 # - Starts leo devnet in background
