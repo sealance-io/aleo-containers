@@ -139,7 +139,6 @@ The project consists of the following files:
 ├── leo.Dockerfile                       # Multi-stage Dockerfile for Leo Lang
 ├── aleo-devnet.Dockerfile               # Multi-stage Dockerfile for Aleo Devnet (Leo + snarkOS)
 ├── devnet-entrypoint.sh                 # Entrypoint wrapper for aleo-devnet (log forwarding, graceful shutdown)
-├── docker-compose.yaml                  # Docker Compose setup for local testnet
 ├── download-provers.sh                  # Script to download Aleo prover parameters
 ├── required-programs.txt                # Programs that must exist in every deployment snapshot
 └── README.md                            # This documentation file
@@ -159,33 +158,6 @@ This repository includes automated workflows for building and publishing images,
 - Deployment snapshot creation for custom Aleo programs
 
 For detailed information about the CI/CD workflows, please see the [CI/CD documentation](./docs/CI.md).
-
-## 🌐 Docker Compose Local Testnet
-
-The `docker-compose.yaml` file sets up a local Aleo testnet with:
-- 4 validator nodes (validator0-3)
-- 1 client node with REST API
-- Fixed IP addressing for consistent peer connections
-- REST API exposed on port 3030
-
-To run the local testnet:
-
-```bash
-# Start the testnet
-docker-compose up -d
-
-# Check status
-docker-compose ps
-
-# View logs
-docker-compose logs -f validator0
-
-# Access REST API
-curl http://localhost:3030/testnet/latest/height
-
-# Stop the testnet
-docker-compose down
-```
 
 ## 🔧 Building Images Locally
 

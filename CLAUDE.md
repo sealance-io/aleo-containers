@@ -43,10 +43,6 @@ docker run --rm ghcr.io/sealance-io/leo-lang:v3.5.0 leo --help
 # Run Aleo devnet (Leo v3 + snarkOS)
 docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/aleo/data ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.4
 
-# Run local testnet with docker-compose (4 validators + 1 client)
-# NOTE: requires locally-tagged image "localhost/snarkos:devnet-v4.5.4"
-docker-compose up -d
-
 # Access REST API after testnet starts
 curl http://localhost:3030/testnet/latest/height
 ```
@@ -185,13 +181,6 @@ In practice, inference (step 1) tries to align the base image with what the Dock
 **Prover Downloads**: `download-provers.sh` downloads 9 mainnet parameter files (~2GB total) to the directory specified by `DEST_DIR`. Downloads run in parallel batches of 4, with per-file success/failure tracking. Any single failure causes a non-zero exit.
 
 **snarkOS Build Features**: `default,snarkos-node-metrics,test_network` — the `test_network` feature is required for devnet operation.
-
-**Docker Compose Network**: Uses `localhost/snarkos:devnet-v4.5.4` (locally-tagged image, not from GHCR). Fixed IP addressing (172.20.0.0/16):
-- validator0: 172.20.0.2 (verbose logging, REST disabled)
-- validator1-3: 172.20.0.3-5 (quiet logging)
-- client0: 172.20.0.6 (REST API on port 3030)
-
-The `CONSENSUS_VERSION_HEIGHTS` environment variable (commented out in docker-compose.yaml) can be set to a comma-separated list of heights to accelerate consensus version transitions in devnet.
 
 ### Build Script Intelligence
 
