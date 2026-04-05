@@ -1,17 +1,6 @@
 # 🔄 CI/CD Workflows
 
-This repository uses GitHub Actions to automate the building and publishing of Docker images.
-
-## Automated Version Detection
-
-A workflow checks for new releases of Leo and snarkOS:
-
-- Scheduled cron is currently disabled; trigger manually via `gh workflow run check-updates.yml`
-- Scans both Leo and snarkOS repositories for new release tags
-- Only processes versions that meet minimum requirements (Leo >= v3.5.0, snarkOS >= v4.5.4)
-- Compares against existing images in the registry to avoid rebuilding
-- Triggers `leo-lang` builds for new Leo versions
-- Triggers `aleo-devnet` builds for new Leo+snarkOS combinations
+This repository uses GitHub Actions to automate building, publishing, linting, and security scanning of Docker images.
 
 ## Build Workflows
 
@@ -35,11 +24,33 @@ The build system consists of these primary workflows:
 
 4. **Deployment Snapshot Workflow** (`build-publish-deployment-snapshot.yml`)
    - Creates custom Aleo devnet images with pre-deployed programs
-   - Clones and deploys programs from compliant-transfer-aleo repository
-   - Volume mount narrowed to `/aleo/data` — only ledger state is captured
-   - 3-layer validation: pre-shutdown program verification, post-build per-platform E2E, fail-closed publish gate
-   - Latest tag is a retag of the verified version-tag digest (via `docker buildx imagetools create`), not a rebuild
-   - Reads `required-programs.txt` by default; override with `required-programs` input
+   - See [Deployment Snapshot Creation](#deployment-snapshot-creation) for the full step-by-step flow
+
+## Linting & Security
+
+Two additional workflows run on push/PR to `main` and enforce required branch protection checks:
+
+5. **Lint** (`lint.yml`)
+   - **ShellCheck** (`--severity=warning`) for all `*.sh` scripts
+   - **Hadolint** (`--failure-threshold error`) for all `*.Dockerfile` files
+   - Rollup job `lint-status` is a **required status check** for PRs
+
+6. **Security Audit** (`security-audit.yml`)
+   - **Zizmor** audits workflow files (pedantic on PR/push, auditor persona on weekly schedule)
+   - **Trivy config scan** for Dockerfile misconfigurations — fails on HIGH/CRITICAL
+   - **Trivy + Grype image scans** of published images — report-only, schedule/manual only
+   - Rollup job `security-status` is a **required status check** for PRs
+
+Both workflows use **job-level change detection** (not workflow-level `paths` filters) to avoid stuck "Pending" required checks on unrelated PRs.
+
+### CI Hardening Patterns
+
+All workflows follow these security patterns — maintain them when editing `.github/workflows/`:
+
+- **SHA-pinned actions**: Every `uses:` references a full commit SHA, not a mutable tag. Include the version as a trailing comment (e.g., `# v6.0.2`)
+- **`persist-credentials: false`** on all `actions/checkout` steps
+- **Minimal permissions**: `permissions: {}` at workflow level, explicit per-job grants
+- **Env indirection**: Workflow context values (`github.*`, `inputs.*`) pass through `env:` blocks, never interpolated directly in `run:` scripts
 
 ## Build Optimizations
 
@@ -108,34 +119,22 @@ This enables parallel builds without manifest conflicts.
 
 ## Manual Builds
 
-You can manually trigger builds through the GitHub Actions interface:
+Trigger builds via GitHub Actions UI or the `gh` CLI:
 
-### Standard Images
+```bash
+# Build a leo-lang image
+gh workflow run manual-build.yml -f image_name=leo-lang -f leo_version=v3.5.0
 
-1. Navigate to the "Actions" tab in the repository
-2. Select the "Build Docker Images" workflow
-3. Click "Run workflow"
-4. Fill in the required parameters:
-   - Image name (`leo-lang` or `aleo-devnet`)
-   - Version tag
-   - Other optional settings
+# Build an aleo-devnet image
+gh workflow run manual-build.yml -f image_name=aleo-devnet -f leo_version=v3.5.0 -f snarkos_version=v4.5.4
 
-### Deployment Snapshots
+# Build a deployment snapshot
+gh workflow run build-publish-deployment-snapshot.yml \
+  -f git-ref=main -f aleo-devnet-version=v3.5.0-v4.5.4
 
-1. Navigate to the "Actions" tab in the repository
-2. Select the "Create aleo-devnet deployment snapshot" workflow
-3. Click "Run workflow"
-4. Fill in the required parameters:
-   - Git reference (branch/tag/commit) to deploy
-   - Aleo devnet base image version
-   - Custom image name
-   - Whether to push as latest
-   - Required programs to verify (optional; defaults to `required-programs.txt`)
-
-This is useful for:
-- Testing specific versions that might not be automatically detected
-- Creating custom devnet images with your deployed programs
-- Building deployment snapshots from specific branches or commits
+# Check for upstream version updates
+gh workflow run check-updates.yml
+```
 
 ## How It Works
 

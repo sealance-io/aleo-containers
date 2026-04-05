@@ -1,16 +1,9 @@
 # Aleo Blockchain Docker Images
 
-This repository provides Docker images for Aleo blockchain tooling:
+This repository provides multi-architecture (AMD64/ARM64) Docker images for Aleo blockchain tooling:
 
-- **Leo Lang Images**: The Leo programming language CLI tool designed for building and running zero-knowledge applications
-- **Aleo Devnet Image**: Integrated development environment with Leo v3 and snarkOS for running local test networks
-
-Image variants available:
-
-- **Standard Image**: Contains the core CLI tools with necessary runtime dependencies
-- **Devnet Image**: Combined Leo and snarkOS for local blockchain development
-
-All images are multi-architecture, supporting AMD64 and ARM64 platforms.
+- **Leo Lang** (`leo-lang`): The Leo programming language CLI with Node.js, for building and running zero-knowledge applications
+- **Aleo Devnet** (`aleo-devnet`): Integrated Leo + snarkOS environment for running local test networks
 
 ## 📦 Docker Images
 
@@ -18,11 +11,8 @@ All images are multi-architecture, supporting AMD64 and ARM64 platforms.
 
 Pre-built images are available on GitHub Container Registry:
 
-#### Leo Lang
-- **Standard**: `ghcr.io/sealance-io/leo-lang:v3.5.0`
-
-#### Aleo Devnet
-- **Integrated**: `ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.4`
+- **Leo Lang**: `ghcr.io/sealance-io/leo-lang:v3.5.0`
+- **Aleo Devnet**: `ghcr.io/sealance-io/aleo-devnet:v3.5.0-v4.5.4`
 
 ### Custom Deployment Snapshots
 - **With deployed programs**: `ghcr.io/sealance-io/aleo-devnet-custom:latest`
@@ -31,7 +21,7 @@ You can also use the `latest` tag to always get the most recent version.
 
 ### Image Contents
 
-#### Leo Lang Standard Image (`leo-lang`)
+#### Leo Lang (`leo-lang`)
 - Leo CLI v3.5.0
 - Node.js v24
 - Debian trixie (slim)
@@ -47,9 +37,9 @@ You can also use the `latest` tag to always get the most recent version.
 
 ## 🚀 Usage
 
-### Leo Lang Standard Image
+### Leo Lang
 
-Perfect for development, deployment, and running Leo applications:
+For development, deployment, and running Leo applications:
 
 ```bash
 # Run the Leo CLI directly
@@ -116,8 +106,7 @@ jobs:
       - name: Setup Leo CLI
         uses: sealance-io/setup-leo-action@126611b39ce92d063c50da6623f8a0b08bf294dd # v1.0.0
         with:
-          version: '3.4.0'
-          rust-version: '1.92.0'
+          version: '3.5.0'
 
       - name: Build Leo project
         run: leo build
@@ -128,28 +117,6 @@ jobs:
 
 See [setup-leo-action](https://github.com/sealance-io/setup-leo-action) for more options.
 
-## 📂 Project Structure
-
-The project consists of the following files:
-
-```
-.
-├── build-publish-image.sh               # Build script for creating and publishing images
-├── build-publish-deployment-snapshot.sh # Build script for deployment snapshots
-├── leo.Dockerfile                       # Multi-stage Dockerfile for Leo Lang
-├── aleo-devnet.Dockerfile               # Multi-stage Dockerfile for Aleo Devnet (Leo + snarkOS)
-├── devnet-entrypoint.sh                 # Entrypoint wrapper for aleo-devnet (log forwarding, graceful shutdown)
-├── download-provers.sh                  # Script to download Aleo prover parameters
-├── required-programs.txt                # Programs that must exist in every deployment snapshot
-└── README.md                            # This documentation file
-```
-
-The build script automatically:
-- Uses its own directory as the build context
-- Supports building different image types with the same script
-- Uses Docker BuildKit or Podman to build multi-architecture images
-- Targets specific stages in the Dockerfile for different image variants
-
 ## 🔄 CI/CD Automation
 
 This repository includes automated workflows for building and publishing images, including:
@@ -158,6 +125,15 @@ This repository includes automated workflows for building and publishing images,
 - Deployment snapshot creation for custom Aleo programs
 
 For detailed information about the CI/CD workflows, please see the [CI/CD documentation](./docs/CI.md).
+
+### CI Checks
+
+PRs to `main` must pass two required status checks:
+
+- **`lint-status`** — ShellCheck for `*.sh`, Hadolint for `*.Dockerfile`
+- **`security-status`** — [zizmor](https://docs.zizmor.sh/) for workflow files, [Trivy](https://trivy.dev/) for Dockerfile misconfigurations
+
+Published image vulnerability scans (Trivy + [Grype](https://github.com/anchore/grype)) run on a weekly schedule and manual dispatch (report-only).
 
 ## 🔧 Building Images Locally
 
@@ -172,30 +148,18 @@ This repository provides a build script to create both image variants for any su
 
 ```bash
 # Login to GitHub Container Registry (only needed when pushing)
-cat ~/.github/token | docker login ghcr.io --username USERNAME --password-stdin
+echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 
-# Build Leo Lang image
+# Build Leo Lang image (multi-arch, push to registry)
 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 
-# Build Aleo Devnet image (Leo v3 + snarkOS)
+# Build Aleo Devnet image (requires leo-lang to exist in registry first)
 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 
-# Build without tagging as latest
-./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --no-latest
-
-# Build locally without pushing to registry
-./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --no-push
-
-# Build only for host architecture (faster development builds)
-./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --local-arch
-
-# Local development build (single arch, no push)
+# Local development build (single arch, no push — fastest)
 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --local-arch --no-push
 
-# Build with custom variant suffix
-./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --variant node24
-
-# Get help
+# See all flags: --no-latest, --no-push, --local-arch, --variant
 ./build-publish-image.sh --help
 ```
 
@@ -261,71 +225,27 @@ RUST_VERSION=1.89.0 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile
 # Produces: aleo-devnet:v3.5.0-v4.5.4-rust189, aleo-devnet:latest
 ```
 
-### Using environment variables
+### Environment Variables
 
-The build process can be customized using environment variables:
+| Variable | Applies to | Description |
+|---|---|---|
+| `LEO_VERSION` | both | Leo release tag (default: `v3.5.0`) |
+| `SNARKOS_VERSION` | aleo-devnet | snarkOS release tag (default: `v4.5.4`) |
+| `LEO_REPO` | both | Leo Git URL (default: ProvableHQ/leo) |
+| `RUST_VERSION` | both | Rust base image tag (auto-inferred from upstream `rust-toolchain.toml`) |
+| `NODE_VERSION` | leo-lang | Node.js major version (default: `24`) |
+| `DEBIAN_RELEASE` | both | Base image distribution (default: `trixie`) |
+| `REGISTRY` | both | Container registry (default: `ghcr.io/sealance-io`) |
 
 ```bash
-# Override Leo version
-LEO_VERSION="v3.5.0" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
-
-# Override Leo repository URL
-LEO_REPO="https://github.com/your-fork/leo" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
-
-# Override Aleo Devnet versions (Leo and snarkOS)
-LEO_VERSION="v3.5.0" SNARKOS_VERSION="v4.5.4" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
-
-# Override Rust version for Aleo Devnet
-RUST_VERSION="1.92.0" ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
-
-# Override Node.js version (Leo Lang only)
-NODE_VERSION=18 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
-
-# Override base image distribution
-DEBIAN_RELEASE=bullseye ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
-
-# Override registry
-REGISTRY="docker.io" ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
-
-# Override image name directly (alternative to --image-name)
-IMAGE_NAME="custom-leo" ./build-publish-image.sh --dockerfile leo.Dockerfile
-
-# Multiple overrides at once
-LEO_VERSION="v3.5.0" LEO_REPO="https://github.com/your-fork/leo" NODE_VERSION=18 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
+# Example: multiple overrides
+LEO_VERSION="v3.5.0" LEO_REPO="https://github.com/your-fork/leo" NODE_VERSION=18 \
+  ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 ```
-
-## 🛠️ Script Features
-
-The build script includes several features to ensure robust and flexible builds:
-
-- **Strict error handling** with `set -euo pipefail` to catch issues early
-- **Cross-platform compatibility** for both Linux and macOS
-- **Build context awareness** using the script's directory
-- **Multi-image support** for building different image types with the same script
-- **Dynamic configuration** via environment variables or command-line options
-- **Multi-architecture support** for AMD64 and ARM64
-- **Flexible build targets** for local or remote, single or multi-architecture
-- **Smart version handling** for different project types
-- **Target-based building** using Docker multi-stage builds
-- **Repository customization** for building from forks or different sources
-- **Variant support** for building specialized versions with custom tag suffixes
 
 ## ⚠️ Compatibility Notes
 
-### Docker Version Requirements
-
-The build script works with:
-
-- **Docker**: Version 19.03 or later with buildx plugin
-- **Podman**: Version 3.0 or later for full multi-architecture support
-
-If you encounter errors with the Docker build related to heredoc syntax or other advanced Dockerfile features, make sure you're using a recent Docker version or enable BuildKit with:
-
-```bash
-export DOCKER_BUILDKIT=1
-```
-
-You can also use the compatible Dockerfile that avoids using heredoc syntax for broader compatibility.
+The build scripts require **Docker with buildx plugin** or **Podman 3.0+** for multi-architecture support.
 
 ## 🔍 Troubleshooting
 

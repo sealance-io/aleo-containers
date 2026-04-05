@@ -1,0 +1,7 @@
+---
+description: Repository context and conventions for Aleo Docker containers
+globs: **/*
+---
+
+All repository context, conventions, and deep-dive documentation is in AGENTS.md at the repo root.
+Read AGENTS.md first — it contains an index to docs under docs/ to load on demand.
