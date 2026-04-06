@@ -9,13 +9,13 @@ on:
     # Allow manual trigger for testing
     inputs:
       minimum_leo_version:
-        description: 'Minimum Leo version to build (defaults to v3.5.0)'
+        description: 'Minimum Leo version to build (defaults to v4.0.0)'
         required: false
-        default: 'v3.5.0'
+        default: 'v4.0.0'
       minimum_snarkos_version:
-        description: 'Minimum snarkOS version to build (defaults to v4.5.4)'
+        description: 'Minimum snarkOS version to build (defaults to v4.6.0)'
         required: false
-        default: 'v4.5.4'
+        default: 'v4.6.0'
 
 permissions: {}
 
@@ -36,8 +36,8 @@ jobs:
       - name: Set up variables
         id: vars
         env:
-          INPUT_MIN_LEO: ${{ inputs.minimum_leo_version || 'v3.5.0' }}
-          INPUT_MIN_SNARKOS: ${{ inputs.minimum_snarkos_version || 'v4.5.4' }}
+          INPUT_MIN_LEO: ${{ inputs.minimum_leo_version || 'v4.0.0' }}
+          INPUT_MIN_SNARKOS: ${{ inputs.minimum_snarkos_version || 'v4.6.0' }}
         run: |
           echo "leo_repo=ProvableHQ/leo" >> $GITHUB_OUTPUT
           echo "snarkos_repo=ProvableHQ/snarkOS" >> $GITHUB_OUTPUT
