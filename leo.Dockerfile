@@ -3,14 +3,14 @@
 ARG NODE_VERSION=24
 ARG DEBIAN_RELEASE=trixie
 # Used to pin Rust base images.
-ARG RUST_VERSION=1.92.0
+ARG RUST_VERSION=1.94.1
 
 # =============================================================================
 # Stage 0: Planner - Generate cargo-chef recipe for dependency caching
 # =============================================================================
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as planner
 
-ARG LEO_VERSION=v3.5.0
+ARG LEO_VERSION=v4.0.0
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
 
 # Install cargo-chef and git
@@ -35,7 +35,7 @@ RUN cp rust-toolchain.toml /app/rust-toolchain.toml \
 # =============================================================================
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as builder
 
-ARG LEO_VERSION=v3.5.0
+ARG LEO_VERSION=v4.0.0
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
 
 # Force rust to use external Git instead of the internal libgit wrapper
@@ -64,8 +64,14 @@ RUN git clone -b "${LEO_VERSION}" --recurse-submodules --single-branch --depth 1
 WORKDIR /src/leo
 
 # Compile with optimizations - dependencies already compiled from cargo chef cook
+# Leo v4+ uses a workspace layout (crates/leo/Cargo.toml) requiring -p leo-lang;
+# Leo v3 builds from the workspace root without -p.
 RUN cp /app/rust-toolchain.toml /src/leo/rust-toolchain.toml \
-    && cargo build --release --locked \
+    && if [ -f crates/leo/Cargo.toml ]; then \
+         cargo build --release --locked -p leo-lang; \
+       else \
+         cargo build --release --locked; \
+       fi \
     && cp target/release/leo /usr/local/bin/leo \
     && strip /usr/local/bin/leo
 
