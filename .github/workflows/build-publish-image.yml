@@ -28,7 +28,7 @@ on:
         default: 'sealance-io'
         type: string
       project_version:
-        description: 'Project version to build (e.g., v4.0.0)'
+        description: 'Project version to build (e.g., v4.0.2)'
         required: true
         type: string
       project_repo:
@@ -213,7 +213,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            LEO_VERSION=${{ inputs.leo_version || 'v4.0.0' }}
+            LEO_VERSION=${{ inputs.leo_version || 'v4.0.2' }}
             SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.6.0' }}
             RUST_VERSION=${{ needs.determine-params.outputs.rust_version }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}
