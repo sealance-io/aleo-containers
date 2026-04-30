@@ -30,7 +30,7 @@
 
 | Variable | Applies to | Default | Description |
 |---|---|---|---|
-| `LEO_VERSION` | both | `v4.0.0` | Leo release tag |
+| `LEO_VERSION` | both | `v4.0.2` | Leo release tag |
 | `SNARKOS_VERSION` | aleo-devnet | `v4.6.0` | snarkOS release tag |
 | `LEO_REPO` | both | ProvableHQ/leo | Leo Git URL |
 | `RUST_VERSION` | both | auto-inferred | Rust base image tag |
@@ -40,7 +40,7 @@
 
 ```bash
 # Example: multiple overrides
-LEO_VERSION="v4.0.0" SNARKOS_VERSION="v4.6.0" \
+LEO_VERSION="v4.0.2" SNARKOS_VERSION="v4.6.0" \
   ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 
 # Build from a fork

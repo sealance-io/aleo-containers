@@ -3,7 +3,7 @@
 # Run: docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/aleo/data aleo-devnet
 
 # Build arguments
-ARG LEO_VERSION=v4.0.0
+ARG LEO_VERSION=v4.0.2
 ARG SNARKOS_VERSION=v4.6.0
 # Used to pin Rust base images.
 ARG RUST_VERSION=1.88.0

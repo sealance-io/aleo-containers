@@ -10,7 +10,7 @@ ARG RUST_VERSION=1.94.1
 # =============================================================================
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as planner
 
-ARG LEO_VERSION=v4.0.0
+ARG LEO_VERSION=v4.0.2
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
 
 # Install cargo-chef and git
@@ -35,7 +35,7 @@ RUN cp rust-toolchain.toml /app/rust-toolchain.toml \
 # =============================================================================
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as builder
 
-ARG LEO_VERSION=v4.0.0
+ARG LEO_VERSION=v4.0.2
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
 
 # Force rust to use external Git instead of the internal libgit wrapper
