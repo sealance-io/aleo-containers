@@ -201,7 +201,7 @@ jobs:
 
       - name: Install dokojs CLI
         run: |
-          npm install -g @sealance-io/dokojs@1.0.4 --ignore-scripts
+          npm install -g @sealance-io/dokojs@1.0.8 --registry=https://registry.npmjs.org/ --ignore-scripts
           dokojs --version
 
       - name: Create data directory
@@ -223,7 +223,7 @@ jobs:
           cp .env.example .env
 
           # Install dependencies
-          npm ci
+          npm ci --ignore-scripts
 
           # Apply package patches
           npm run postinstall

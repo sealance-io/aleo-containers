@@ -341,6 +341,17 @@ fi
 # Display npm version for debugging
 print_step "Using npm version: $(npm --version)"
 
+print_step "Installing dokojs CLI from npmjs registry..."
+if ! npm install -g @sealance-io/dokojs@1.0.8 --registry=https://registry.npmjs.org/ --ignore-scripts; then
+    print_error "Failed to install @sealance-io/dokojs@1.0.8 from npmjs registry."
+    exit 1
+fi
+if ! command -v dokojs &> /dev/null; then
+    print_error "dokojs command not found after installation."
+    exit 1
+fi
+print_success "dokojs installed: $(dokojs --version)"
+
 # Step 2: Pull aleo-devnet image
 print_step "Pulling image ${DEVNET_IMAGE}..."
 ${CONTAINER_TOOL} pull "${DEVNET_IMAGE}"
@@ -373,13 +384,6 @@ if ! npm run build --workspace=@sealance-io/policy-engine-aleo; then
     exit 1
 fi
 print_success "@sealance-io/policy-engine-aleo installed."
-
-# Check if dokojs is available globally
-if ! command -v dokojs &> /dev/null; then
-    print_warning "dokojs command not found in PATH."
-    print_warning "The compile step might fail if dokojs is not installed."
-    print_warning "Please ensure dokojs is installed globally via npm."
-fi
 
 print_step "Compiling project (rimraf artifacts && dokojs compile)..."
 if ! TESTNET_ENDPOINT="https://api.explorer.provable.com/v1" npm run compile; then
