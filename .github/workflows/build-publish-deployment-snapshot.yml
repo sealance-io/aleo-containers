@@ -29,9 +29,9 @@ on:
         default: false
         type: boolean
       consensus-version:
-        description: 'Target consensus version for devnet (default: 13)'
+        description: 'Target consensus version for devnet (default: 14)'
         required: false
-        default: 13
+        default: 14
         type: number
       required-programs:
         description: 'Comma-separated program IDs to verify. Empty = read from required-programs.txt'
@@ -71,9 +71,9 @@ on:
         default: false
         type: boolean
       consensus-version:
-        description: 'Target consensus version for devnet (default: 13)'
+        description: 'Target consensus version for devnet (default: 14)'
         required: false
-        default: 13
+        default: 14
         type: number
       required-programs:
         description: 'Comma-separated program IDs to verify. Empty = read from required-programs.txt'

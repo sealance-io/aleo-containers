@@ -152,7 +152,7 @@ gh workflow run check-updates.yml
 1. The workflow clones the compliant-transfer-aleo repository at the specified ref
 2. Resolves required programs from `required-programs.txt` (or the `required-programs` input override). Publish flows fail if the list is empty.
 3. Starts an Aleo devnet container with volume mounted at `/aleo/data` (only ledger state)
-4. Waits for the devnet consensus version to reach the target (default: >= 13)
+4. Waits for the devnet consensus version to reach the target (default: >= 14)
 5. Installs dependencies and builds the programs
 6. Deploys the programs to the local devnet
 7. **Pre-shutdown verification**: Queries the REST API for each required program (retries up to 10x)

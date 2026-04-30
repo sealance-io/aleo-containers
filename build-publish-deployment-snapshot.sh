@@ -40,7 +40,7 @@ usage() {
     echo "Options:"
     echo "  -c, --commit <sha/branch/tag>    Git commit SHA, branch, or tag to clone (default: main)"
     echo "  -v, --version <version>          Version tag for aleo-devnet image (default: v4.0.2-v4.6.0)"
-    echo "  -t, --consensus-version <num>    Target consensus version for devnet (default: 13)"
+    echo "  -t, --consensus-version <num>    Target consensus version for devnet (default: 14)"
     echo "  -p, --required-programs <list>   Comma-separated program IDs to verify (default: from required-programs.txt)"
     echo "  --skip-push                      Build images but skip pushing to registry (for testing)"
     echo "  -h, --help                       Show this help message"
@@ -64,7 +64,7 @@ usage() {
 # Parse command line arguments
 GIT_REF="main"
 DEVNET_VERSION="v4.0.2-v4.6.0"
-CONSENSUS_VERSION=13
+CONSENSUS_VERSION=14
 SKIP_PUSH=false
 REQUIRED_PROGRAMS=""
 

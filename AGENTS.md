@@ -42,7 +42,7 @@ snapshot Dockerfile (generated) → ghcr.io/sealance-io/aleo-devnet-custom:tag
 
 ```bash
 ./build-publish-deployment-snapshot.sh --commit main --skip-push
-./build-publish-deployment-snapshot.sh --commit main --version v4.0.2-v4.6.0 --consensus-version 13
+./build-publish-deployment-snapshot.sh --commit main --version v4.0.2-v4.6.0 --consensus-version 14
 ```
 
 ### Run Containers
