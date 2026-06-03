@@ -34,11 +34,15 @@ Prover download and entrypoint script execution happen as `leo` user. The UID is
 
 Two layers of Rust version management work together:
 
-1. **Build-time inference** (`build-publish-image.sh` and CI): If `RUST_VERSION` is not explicitly set, `infer_rust_version()` fetches the upstream project's `rust-toolchain.toml` from GitHub and extracts the `channel` value. This sets the Docker **base image** tag (`rust:${RUST_VERSION}-slim-trixie`). Falls back to `1.94.1` if inference fails or the channel is nightly.
+1. **Build-time inference** (`build-publish-image.sh` and CI): If `RUST_VERSION` is not explicitly set, `infer_rust_version()` fetches the upstream project's `rust-toolchain.toml` from GitHub and extracts the `channel` value. This sets the Docker **base image** tag (`rust:${RUST_VERSION}-slim-trixie`). Leo inference uses `LEO_SOURCE_TAG` (default `leo-lang-v4.1.0` for image tag `v4.1.0`), while snarkOS inference uses `SNARKOS_VERSION`.
 
 2. **Dockerfile-level deferral**: The actual Rust compiler used is determined by the upstream `rust-toolchain.toml` copied from the cloned repo during the planner stage. The base image just needs `rustup` to install the required toolchain.
 
-In practice, inference (step 1) tries to align the base image with what the Dockerfile will need (step 2), avoiding an unnecessary toolchain download. Set `RUST_VERSION` explicitly only to override.
+In practice, inference (step 1) tries to align the base image with what the Dockerfile will need (step 2), avoiding an unnecessary toolchain download. Set `RUST_VERSION` explicitly only to override. Keep Rust per component: Leo `v4.1.0` requires Rust `1.96.0`; snarkOS `v4.7.0` still declares Rust `1.88`, normalized to Docker base tag `1.88.0`.
+
+## Leo Source Tags vs Image Tags
+
+Published image tags are normalized (`ghcr.io/sealance-io/leo-lang:v4.1.0`), but upstream Leo source uses `leo-lang-v4.1.0`. `LEO_VERSION` controls the image tag and metadata; `LEO_SOURCE_TAG` controls the git clone and Rust toolchain inference. If unset, `LEO_SOURCE_TAG` derives `leo-lang-v4.1.0` only for the default `LEO_VERSION=v4.1.0`; older/manual versions fall back to `LEO_VERSION`.
 
 ## Prover Downloads
 

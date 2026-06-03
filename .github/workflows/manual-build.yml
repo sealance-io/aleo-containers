@@ -11,14 +11,19 @@ on:
           - leo-lang
           - aleo-devnet
       leo_version:
-        description: 'Leo version (e.g., v4.0.2)'
+        description: 'Leo image version (e.g., v4.1.0)'
         required: true
         type: string
-        default: 'v4.0.2'
+        default: 'v4.1.0'
+      leo_source_tag:
+        description: 'Leo upstream source tag (leo-lang only; blank derives default)'
+        required: false
+        type: string
+        default: ''
       snarkos_version:
         description: 'snarkOS version (aleo-devnet only)'
         type: string
-        default: 'v4.6.0'
+        default: 'v4.7.0'
         required: false
       tag_latest:
         description: 'Tag as latest'
@@ -35,6 +40,7 @@ jobs:
     outputs:
       dockerfile: ${{ steps.derive.outputs.dockerfile }}
       project_version: ${{ steps.derive.outputs.project_version }}
+      leo_source_tag: ${{ steps.derive.outputs.leo_source_tag }}
       snarkos_version: ${{ steps.derive.outputs.snarkos_version }}
     steps:
       - name: Derive parameters from image name
@@ -42,23 +48,38 @@ jobs:
         env:
           INPUT_IMAGE_NAME: ${{ inputs.image_name }}
           INPUT_LEO_VERSION: ${{ inputs.leo_version }}
+          INPUT_LEO_SOURCE_TAG: ${{ inputs.leo_source_tag }}
           INPUT_SNARKOS_VERSION: ${{ inputs.snarkos_version }}
         run: |
           LEO_VERSION="${INPUT_LEO_VERSION}"
+          LEO_SOURCE_TAG="${INPUT_LEO_SOURCE_TAG}"
           SNARKOS_VERSION="${INPUT_SNARKOS_VERSION}"
-          SNARKOS_VERSION="${SNARKOS_VERSION:-v4.6.0}"
+          SNARKOS_VERSION="${SNARKOS_VERSION:-v4.7.0}"
 
           if [[ "${INPUT_IMAGE_NAME}" == "leo-lang" ]]; then
-            echo "dockerfile=leo.Dockerfile" >> $GITHUB_OUTPUT
-            # For leo-lang, project_version is just the Leo version
-            echo "project_version=${LEO_VERSION}" >> $GITHUB_OUTPUT
+            if [[ -z "${LEO_SOURCE_TAG}" ]]; then
+              if [[ "${LEO_VERSION}" == "v4.1.0" ]]; then
+                LEO_SOURCE_TAG="leo-lang-v4.1.0"
+              else
+                LEO_SOURCE_TAG="${LEO_VERSION}"
+              fi
+            fi
+            {
+              echo "dockerfile=leo.Dockerfile"
+              # For leo-lang, project_version is just the Leo version
+              echo "project_version=${LEO_VERSION}"
+              echo "leo_source_tag=${LEO_SOURCE_TAG}"
+            } >> "$GITHUB_OUTPUT"
           elif [[ "${INPUT_IMAGE_NAME}" == "aleo-devnet" ]]; then
-            echo "dockerfile=aleo-devnet.Dockerfile" >> $GITHUB_OUTPUT
-            # For aleo-devnet, project_version is combined: v4.0.2-v4.6.0
-            echo "project_version=${LEO_VERSION}-${SNARKOS_VERSION}" >> $GITHUB_OUTPUT
+            {
+              echo "dockerfile=aleo-devnet.Dockerfile"
+              # For aleo-devnet, project_version is combined: v4.1.0-v4.7.0
+              echo "project_version=${LEO_VERSION}-${SNARKOS_VERSION}"
+              echo "leo_source_tag="
+            } >> "$GITHUB_OUTPUT"
           fi
 
-          echo "snarkos_version=${SNARKOS_VERSION}" >> $GITHUB_OUTPUT
+          echo "snarkos_version=${SNARKOS_VERSION}" >> "$GITHUB_OUTPUT"
 
   build:
     needs: derive-params
@@ -70,6 +91,7 @@ jobs:
       image_name: ${{ inputs.image_name }}
       dockerfile: ${{ needs.derive-params.outputs.dockerfile }}
       project_version: ${{ needs.derive-params.outputs.project_version }}
+      leo_source_tag: ${{ needs.derive-params.outputs.leo_source_tag }}
       leo_version: ${{ inputs.leo_version }}
       snarkos_version: ${{ needs.derive-params.outputs.snarkos_version }}
       tag_latest: ${{ inputs.tag_latest }}

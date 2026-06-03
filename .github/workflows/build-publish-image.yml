@@ -28,8 +28,13 @@ on:
         default: 'sealance-io'
         type: string
       project_version:
-        description: 'Project version to build (e.g., v4.0.2)'
+        description: 'Project version/image tag to build (e.g., v4.1.0 or v4.1.0-v4.7.0)'
         required: true
+        type: string
+      leo_source_tag:
+        description: 'Upstream Leo source tag for leo-lang builds (e.g., leo-lang-v4.1.0)'
+        required: false
+        default: ''
         type: string
       project_repo:
         description: 'Project repository URL'
@@ -48,7 +53,7 @@ on:
       snarkos_version:
         description: 'snarkOS version for aleo-devnet'
         required: false
-        default: 'v4.6.0'
+        default: 'v4.7.0'
         type: string
       rust_version:
         description: 'Rust version override (inferred from upstream if not set)'
@@ -58,6 +63,7 @@ on:
       leo_version:
         description: 'Leo version for aleo-devnet (if different from project_version)'
         required: false
+        default: 'v4.1.0'
         type: string
     secrets:
       registry_token:
@@ -75,6 +81,7 @@ jobs:
       project_repo: ${{ steps.set-params.outputs.project_repo }}
       project_repo_arg: ${{ steps.set-params.outputs.project_repo_arg }}
       project_version_arg: ${{ steps.set-params.outputs.project_version_arg }}
+      leo_source_tag: ${{ steps.set-params.outputs.leo_source_tag }}
       uses_target: ${{ steps.set-params.outputs.uses_target }}
       registry_image: ${{ steps.set-params.outputs.registry_image }}
       rust_version: ${{ steps.infer-rust.outputs.rust_version }}
@@ -86,19 +93,35 @@ jobs:
           INPUT_ORGANIZATION: ${{ inputs.organization }}
           INPUT_IMAGE_NAME: ${{ inputs.image_name }}
           INPUT_PROJECT_REPO: ${{ inputs.project_repo }}
+          INPUT_PROJECT_VERSION: ${{ inputs.project_version }}
+          INPUT_LEO_SOURCE_TAG: ${{ inputs.leo_source_tag }}
         run: |
           REGISTRY_IMAGE="${INPUT_REGISTRY}/${INPUT_ORGANIZATION}/${INPUT_IMAGE_NAME}"
-          echo "registry_image=${REGISTRY_IMAGE}" >> $GITHUB_OUTPUT
+          echo "registry_image=${REGISTRY_IMAGE}" >> "$GITHUB_OUTPUT"
 
           if [[ "${INPUT_IMAGE_NAME}" == "leo-lang" ]]; then
-            echo "project_repo_arg=LEO_REPO" >> $GITHUB_OUTPUT
-            echo "project_version_arg=LEO_VERSION" >> $GITHUB_OUTPUT
-            echo "project_repo=${INPUT_PROJECT_REPO:-https://github.com/ProvableHQ/leo}" >> $GITHUB_OUTPUT
-            echo "uses_target=true" >> $GITHUB_OUTPUT
+            LEO_SOURCE_TAG="${INPUT_LEO_SOURCE_TAG}"
+            if [[ -z "${LEO_SOURCE_TAG}" ]]; then
+              if [[ "${INPUT_PROJECT_VERSION}" == "v4.1.0" ]]; then
+                LEO_SOURCE_TAG="leo-lang-v4.1.0"
+              else
+                LEO_SOURCE_TAG="${INPUT_PROJECT_VERSION}"
+              fi
+            fi
+            {
+              echo "project_repo_arg=LEO_REPO"
+              echo "project_version_arg=LEO_VERSION"
+              echo "project_repo=${INPUT_PROJECT_REPO:-https://github.com/ProvableHQ/leo}"
+              echo "leo_source_tag=${LEO_SOURCE_TAG}"
+              echo "uses_target=true"
+            } >> "$GITHUB_OUTPUT"
           elif [[ "${INPUT_IMAGE_NAME}" == "aleo-devnet" ]]; then
-            echo "project_version_arg=LEO_VERSION" >> $GITHUB_OUTPUT
-            echo "project_repo=" >> $GITHUB_OUTPUT
-            echo "uses_target=false" >> $GITHUB_OUTPUT
+            {
+              echo "project_version_arg=LEO_VERSION"
+              echo "project_repo="
+              echo "leo_source_tag="
+              echo "uses_target=false"
+            } >> "$GITHUB_OUTPUT"
           else
             echo "::error::Unknown image name: ${INPUT_IMAGE_NAME}"
             exit 1
@@ -110,19 +133,20 @@ jobs:
           INPUT_RUST_VERSION: ${{ inputs.rust_version }}
           INPUT_IMAGE_NAME: ${{ inputs.image_name }}
           PROJECT_REPO: ${{ steps.set-params.outputs.project_repo }}
+          LEO_SOURCE_TAG: ${{ steps.set-params.outputs.leo_source_tag }}
           INPUT_PROJECT_VERSION: ${{ inputs.project_version }}
           INPUT_SNARKOS_VERSION: ${{ inputs.snarkos_version }}
         run: |
           if [[ -n "${INPUT_RUST_VERSION}" ]]; then
-            echo "rust_version=${INPUT_RUST_VERSION}" >> $GITHUB_OUTPUT
+            echo "rust_version=${INPUT_RUST_VERSION}" >> "$GITHUB_OUTPUT"
             echo "Using explicitly provided Rust version: ${INPUT_RUST_VERSION}"
           else
             if [[ "${INPUT_IMAGE_NAME}" == "leo-lang" ]]; then
               REPO_PATH=$(echo "${PROJECT_REPO}" | sed -e 's|https://github.com/||' -e 's|\.git$||')
-              TAG="${INPUT_PROJECT_VERSION}"
+              TAG="${LEO_SOURCE_TAG}"
             elif [[ "${INPUT_IMAGE_NAME}" == "aleo-devnet" ]]; then
               REPO_PATH="ProvableHQ/snarkOS"
-              TAG="${INPUT_SNARKOS_VERSION:-v4.6.0}"
+              TAG="${INPUT_SNARKOS_VERSION:-v4.7.0}"
             fi
 
             CHANNEL=$(curl -sSf --max-time 10 \
@@ -130,12 +154,21 @@ jobs:
               | sed -n 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
               | tr -d '[:space:]') || true
 
+            if [[ "$CHANNEL" =~ ^[0-9]+\.[0-9]+$ ]]; then
+              CHANNEL="${CHANNEL}.0"
+            fi
+
             if [[ -n "$CHANNEL" && "$CHANNEL" != *nightly* ]]; then
-              echo "rust_version=${CHANNEL}" >> $GITHUB_OUTPUT
+              echo "rust_version=${CHANNEL}" >> "$GITHUB_OUTPUT"
               echo "Inferred Rust version: ${CHANNEL}"
             else
-              echo "rust_version=1.94.1" >> $GITHUB_OUTPUT
-              echo "Could not infer Rust version, using default: 1.94.1"
+              if [[ "${INPUT_IMAGE_NAME}" == "aleo-devnet" ]]; then
+                echo "rust_version=1.88.0" >> "$GITHUB_OUTPUT"
+                echo "Could not infer Rust version, using default: 1.88.0"
+              else
+                echo "rust_version=1.96.0" >> "$GITHUB_OUTPUT"
+                echo "Could not infer Rust version, using default: 1.96.0"
+              fi
             fi
           fi
 
@@ -195,6 +228,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             ${{ needs.determine-params.outputs.project_version_arg }}=${{ inputs.project_version }}
+            LEO_SOURCE_TAG=${{ needs.determine-params.outputs.leo_source_tag }}
             ${{ needs.determine-params.outputs.project_repo_arg }}=${{ needs.determine-params.outputs.project_repo }}
             RUST_VERSION=${{ needs.determine-params.outputs.rust_version }}
             NODE_VERSION=${{ inputs.node_version || '24' }}
@@ -213,8 +247,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            LEO_VERSION=${{ inputs.leo_version || 'v4.0.2' }}
-            SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.6.0' }}
+            LEO_VERSION=${{ inputs.leo_version || 'v4.1.0' }}
+            SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.7.0' }}
             RUST_VERSION=${{ needs.determine-params.outputs.rust_version }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}
           cache-from: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }}
@@ -278,6 +312,7 @@ jobs:
         env:
           REGISTRY_IMAGE: ${{ needs.determine-params.outputs.registry_image }}
         run: |
+          # shellcheck disable=SC2046
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf "${REGISTRY_IMAGE}@sha256:%s " *)
