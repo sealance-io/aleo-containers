@@ -3,14 +3,15 @@
 ARG NODE_VERSION=24
 ARG DEBIAN_RELEASE=trixie
 # Used to pin Rust base images.
-ARG RUST_VERSION=1.94.1
+ARG RUST_VERSION=1.96.0
 
 # =============================================================================
 # Stage 0: Planner - Generate cargo-chef recipe for dependency caching
 # =============================================================================
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as planner
 
-ARG LEO_VERSION=v4.0.2
+ARG LEO_VERSION=v4.1.0
+ARG LEO_SOURCE_TAG=leo-lang-v4.1.0
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
 
 # Install cargo-chef and git
@@ -23,7 +24,7 @@ WORKDIR /app
 
 # Clone repo and generate recipe.json (captures dependency information)
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
-RUN git clone -b "${LEO_VERSION}" --recurse-submodules --single-branch --depth 1 "${LEO_REPO}"
+RUN git clone -b "${LEO_SOURCE_TAG}" --recurse-submodules --single-branch --depth 1 "${LEO_REPO}"
 
 WORKDIR /app/leo
 RUN cp rust-toolchain.toml /app/rust-toolchain.toml \
@@ -35,7 +36,8 @@ RUN cp rust-toolchain.toml /app/rust-toolchain.toml \
 # =============================================================================
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as builder
 
-ARG LEO_VERSION=v4.0.2
+ARG LEO_VERSION=v4.1.0
+ARG LEO_SOURCE_TAG=leo-lang-v4.1.0
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
 
 # Force rust to use external Git instead of the internal libgit wrapper
@@ -59,7 +61,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 
 # Now clone the actual source and build (only this step reruns on source changes)
 # Clone to /src to avoid conflict with cargo chef's generated structure
-RUN git clone -b "${LEO_VERSION}" --recurse-submodules --single-branch --depth 1 "${LEO_REPO}" /src/leo
+RUN git clone -b "${LEO_SOURCE_TAG}" --recurse-submodules --single-branch --depth 1 "${LEO_REPO}" /src/leo
 
 WORKDIR /src/leo
 
@@ -80,9 +82,13 @@ RUN cp /app/rust-toolchain.toml /src/leo/rust-toolchain.toml \
 # =============================================================================
 FROM node:${NODE_VERSION}-${DEBIAN_RELEASE}-slim as leo
 
-ARG LEO_REPO
+ARG LEO_VERSION=v4.1.0
+ARG LEO_SOURCE_TAG=leo-lang-v4.1.0
+ARG LEO_REPO=https://github.com/ProvableHQ/leo
 LABEL org.opencontainers.image.source="${LEO_REPO}"
 LABEL org.opencontainers.image.description="Leo CLI with NodeJS environment"
+LABEL leo.version="${LEO_VERSION}"
+LABEL leo.source-tag="${LEO_SOURCE_TAG}"
 
 # Copy leo-lang binary from the builder stage
 COPY --from=builder /usr/local/bin/leo /usr/local/bin/

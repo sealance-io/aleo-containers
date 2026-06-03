@@ -26,12 +26,15 @@
 
 ## Environment Variables
 
-`RUST_VERSION` is auto-inferred from the upstream `rust-toolchain.toml` — only set it to override.
+`RUST_VERSION` is auto-inferred from the upstream `rust-toolchain.toml` — only set it to override. Leo and snarkOS keep separate Rust policies: Leo `v4.1.0` uses Rust `1.96.0`, while snarkOS `v4.7.0` declares Rust `1.88` and Docker base tags normalize to `1.88.0`.
+
+Leo image tags and source tags are intentionally separate. `LEO_VERSION=v4.1.0` is the public image tag, while `LEO_SOURCE_TAG=leo-lang-v4.1.0` is the upstream git tag used for clone and Rust inference. If `LEO_SOURCE_TAG` is empty, only the default `LEO_VERSION=v4.1.0` derives `leo-lang-v4.1.0`; other versions fall back to `LEO_VERSION`.
 
 | Variable | Applies to | Default | Description |
 |---|---|---|---|
-| `LEO_VERSION` | both | `v4.0.2` | Leo release tag |
-| `SNARKOS_VERSION` | aleo-devnet | `v4.6.0` | snarkOS release tag |
+| `LEO_VERSION` | both | `v4.1.0` | Normalized Leo image/version tag |
+| `LEO_SOURCE_TAG` | leo-lang | `leo-lang-v4.1.0` | Upstream Leo source tag |
+| `SNARKOS_VERSION` | aleo-devnet | `v4.7.0` | snarkOS release tag |
 | `LEO_REPO` | both | ProvableHQ/leo | Leo Git URL |
 | `RUST_VERSION` | both | auto-inferred | Rust base image tag |
 | `NODE_VERSION` | leo-lang | `24` | Node.js major version |
@@ -40,14 +43,14 @@
 
 ```bash
 # Example: multiple overrides
-LEO_VERSION="v4.0.2" SNARKOS_VERSION="v4.6.0" \
+LEO_VERSION="v4.1.0" SNARKOS_VERSION="v4.7.0" \
   ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 
 # Build from a fork
-LEO_REPO="https://github.com/your-fork/leo" \
+LEO_REPO="https://github.com/your-fork/leo" LEO_SOURCE_TAG="leo-lang-v4.1.0" \
   ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 
 # Override Rust version (rarely needed)
-RUST_VERSION=1.85.0 \
+RUST_VERSION=1.96.0 \
   ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 ```

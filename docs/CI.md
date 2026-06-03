@@ -18,7 +18,7 @@ The build system consists of these primary workflows:
 
 3. **Update Detection** (`check-updates.yml`)
    - Monitors upstream Leo and snarkOS repositories for new versions
-   - Applies semantic versioning filters
+   - Filters Leo source releases to `leo-lang-v*`, normalizes them to `v*` image tags, and applies semantic versioning filters
    - Triggers `leo-lang` builds for new Leo versions
    - Triggers `aleo-devnet` builds for new Leo+snarkOS combinations
 
@@ -111,7 +111,7 @@ Each architecture builds and pushes by content digest, then a merge job creates 
 
 ```
 build-standard (amd64) ──→ push @sha256:abc...  ─┐
-                                                  ├─→ merge-standard ──→ tag: v4.0.2
+                                                  ├─→ merge-standard ──→ tag: v4.1.0
 build-standard (arm64) ──→ push @sha256:def...  ─┘
 ```
 
@@ -123,14 +123,22 @@ Trigger builds via GitHub Actions UI or the `gh` CLI:
 
 ```bash
 # Build a leo-lang image
-gh workflow run manual-build.yml -f image_name=leo-lang -f leo_version=v4.0.2
+gh workflow run manual-build.yml \
+  -f image_name=leo-lang \
+  -f leo_version=v4.1.0 \
+  -f leo_source_tag=leo-lang-v4.1.0
 
 # Build an aleo-devnet image
-gh workflow run manual-build.yml -f image_name=aleo-devnet -f leo_version=v4.0.2 -f snarkos_version=v4.6.0
+gh workflow run manual-build.yml \
+  -f image_name=aleo-devnet \
+  -f leo_version=v4.1.0 \
+  -f snarkos_version=v4.7.0
 
 # Build a deployment snapshot
 gh workflow run build-publish-deployment-snapshot.yml \
-  -f git-ref=main -f aleo-devnet-version=v4.0.2-v4.6.0
+  -f git-ref=main \
+  -f aleo-devnet-version=v4.1.0-v4.7.0 \
+  -f consensus-version=15
 
 # Check for upstream version updates
 gh workflow run check-updates.yml
@@ -141,18 +149,19 @@ gh workflow run check-updates.yml
 ### Automated Version Detection
 
 1. The weekly check uses GitHub API to fetch release tags from upstream
-2. It normalizes version strings for proper semantic comparison
-3. Tags below the minimum version threshold are filtered out
-4. Existing registry tags are checked to avoid duplicate builds
-5. For each new qualifying tag, a build workflow is triggered
-6. Images are built and published to the GitHub Container Registry
+2. Leo source tags are filtered to `leo-lang-v*` and normalized to public `v*` image tags
+3. It normalizes version strings for proper semantic comparison
+4. Tags below the minimum version threshold are filtered out
+5. Existing registry tags are checked to avoid duplicate builds
+6. For each new qualifying tag, a build workflow is triggered
+7. Images are built and published to the GitHub Container Registry
 
 ### Deployment Snapshot Creation
 
 1. The workflow clones the compliant-transfer-aleo repository at the specified ref
 2. Resolves required programs from `required-programs.txt` (or the `required-programs` input override). Publish flows fail if the list is empty.
 3. Starts an Aleo devnet container with volume mounted at `/aleo/data` (only ledger state)
-4. Waits for the devnet consensus version to reach the target (default: >= 14)
+4. Waits for the devnet consensus version to reach the target (default: >= 15, with generated heights `0..14`)
 5. Installs dependencies and builds the programs
 6. Deploys the programs to the local devnet
 7. **Pre-shutdown verification**: Queries the REST API for each required program (retries up to 10x)

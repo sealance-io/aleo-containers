@@ -134,7 +134,7 @@ jobs:
           persist-credentials: false
 
       - name: Run ShellCheck
-        run: shellcheck --severity=warning *.sh
+        run: shellcheck --severity=warning ./*.sh
 
   # ============================================================================
   # Lint status aggregation for branch protection

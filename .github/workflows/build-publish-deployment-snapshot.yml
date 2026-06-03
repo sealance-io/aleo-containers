@@ -11,7 +11,7 @@ on:
       aleo-devnet-version:
         description: 'Version tag for aleo-devnet base image'
         required: false
-        default: 'v4.0.2-v4.6.0'
+        default: 'v4.1.0-v4.7.0'
         type: string
       image-name:
         description: 'Custom image name (without registry)'
@@ -29,9 +29,9 @@ on:
         default: false
         type: boolean
       consensus-version:
-        description: 'Target consensus version for devnet (default: 14)'
+        description: 'Target consensus version for devnet (default: 15)'
         required: false
-        default: 14
+        default: 15
         type: number
       required-programs:
         description: 'Comma-separated program IDs to verify. Empty = read from required-programs.txt'
@@ -53,7 +53,7 @@ on:
       aleo-devnet-version:
         description: 'Version tag for aleo-devnet base image'
         required: false
-        default: 'v4.0.2-v4.6.0'
+        default: 'v4.1.0-v4.7.0'
         type: string
       image-name:
         description: 'Custom image name (without registry)'
@@ -71,9 +71,9 @@ on:
         default: false
         type: boolean
       consensus-version:
-        description: 'Target consensus version for devnet (default: 14)'
+        description: 'Target consensus version for devnet (default: 15)'
         required: false
-        default: 14
+        default: 15
         type: number
       required-programs:
         description: 'Comma-separated program IDs to verify. Empty = read from required-programs.txt'
@@ -111,7 +111,7 @@ jobs:
         run: |
           # Extract Leo version from aleo-devnet-version (format: vX.Y.Z-vA.B.C)
           LEO_VERSION=$(echo "${INPUT_DEVNET_VERSION}" | cut -d'-' -f1 | sed 's/^v//')
-          echo "leo-version=${LEO_VERSION}" >> $GITHUB_OUTPUT
+          echo "leo-version=${LEO_VERSION}" >> "$GITHUB_OUTPUT"
           echo "Parsed Leo version: ${LEO_VERSION}"
 
       - name: Validate aleo-devnet version
@@ -143,11 +143,11 @@ jobs:
 
       - name: Setup Leo CLI
         id: setup-leo
-        # TODO: update SHA after sealance-io/setup-leo-action PR #13 (Leo v4 support) merges
-        uses: sealance-io/setup-leo-action@126611b39ce92d063c50da6623f8a0b08bf294dd # v1.0.0
+        # PR #19 head: Support Leo 4.1.0 source tags. Replace with a release SHA once published.
+        uses: sealance-io/setup-leo-action@1a751b63289e0475d09058db0cbc18e88abc7048 # PR #19 head
         with:
           version: ${{ steps.parse-version.outputs.leo-version }}
-          rust-version: '1.94.1'
+          rust-version: '1.96.0'
           enable-cache: true
           cache-save: ${{ github.ref == 'refs/heads/main' && 'always' || 'never' }}
           run-audit: true
@@ -316,7 +316,7 @@ jobs:
           if [[ "${INPUT_SKIP_PUSH}" == "true" && -z "$PROGRAMS" ]]; then
             echo "::warning::No required programs resolved. Program verification will be skipped (skip-push mode)."
           fi
-          echo "list=${PROGRAMS}" >> $GITHUB_OUTPUT
+          echo "list=${PROGRAMS}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy programs
         working-directory: compliant-transfer-aleo-build
@@ -449,10 +449,12 @@ jobs:
           VERSION_TAG="${INPUT_DEVNET_VERSION}-${SHORT_SHA}"
 
           # Set outputs
-          echo "short-sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
-          echo "full-sha=${FULL_SHA}" >> $GITHUB_OUTPUT
-          echo "version-tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
-          echo "image-name=${REGISTRY}/${REPO_OWNER}/${INPUT_IMAGE_NAME}" >> $GITHUB_OUTPUT
+          {
+            echo "short-sha=${SHORT_SHA}"
+            echo "full-sha=${FULL_SHA}"
+            echo "version-tag=${VERSION_TAG}"
+            echo "image-name=${REGISTRY}/${REPO_OWNER}/${INPUT_IMAGE_NAME}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build and push multi-platform image (version tag only)
         if: ${{ !inputs.skip-push }}
@@ -662,7 +664,7 @@ jobs:
           PULL_COMMAND: ${{ !inputs.skip-push && format('docker pull {0}:{1}', steps.meta.outputs.image-name, steps.meta.outputs.version-tag) || '' }}
         run: |
           set -euo pipefail
-          cat >> $GITHUB_STEP_SUMMARY << EOF
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
           # Build Summary
 
           ## 🚀 Custom Aleo Devnet Chain Image Built Successfully!

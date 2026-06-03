@@ -9,13 +9,13 @@ on:
     # Allow manual trigger for testing
     inputs:
       minimum_leo_version:
-        description: 'Minimum Leo version to build (defaults to v4.0.2)'
+        description: 'Minimum Leo image version to build (defaults to v4.1.0)'
         required: false
-        default: 'v4.0.2'
+        default: 'v4.1.0'
       minimum_snarkos_version:
-        description: 'Minimum snarkOS version to build (defaults to v4.6.0)'
+        description: 'Minimum snarkOS version to build (defaults to v4.7.0)'
         required: false
-        default: 'v4.6.0'
+        default: 'v4.7.0'
 
 permissions: {}
 
@@ -36,15 +36,17 @@ jobs:
       - name: Set up variables
         id: vars
         env:
-          INPUT_MIN_LEO: ${{ inputs.minimum_leo_version || 'v4.0.2' }}
-          INPUT_MIN_SNARKOS: ${{ inputs.minimum_snarkos_version || 'v4.6.0' }}
+          INPUT_MIN_LEO: ${{ inputs.minimum_leo_version || 'v4.1.0' }}
+          INPUT_MIN_SNARKOS: ${{ inputs.minimum_snarkos_version || 'v4.7.0' }}
         run: |
-          echo "leo_repo=ProvableHQ/leo" >> $GITHUB_OUTPUT
-          echo "snarkos_repo=ProvableHQ/snarkOS" >> $GITHUB_OUTPUT
-          echo "registry=ghcr.io" >> $GITHUB_OUTPUT
-          echo "organization=sealance-io" >> $GITHUB_OUTPUT
-          echo "min_leo_version=${INPUT_MIN_LEO}" >> $GITHUB_OUTPUT
-          echo "min_snarkos_version=${INPUT_MIN_SNARKOS}" >> $GITHUB_OUTPUT
+          {
+            echo "leo_repo=ProvableHQ/leo"
+            echo "snarkos_repo=ProvableHQ/snarkOS"
+            echo "registry=ghcr.io"
+            echo "organization=sealance-io"
+            echo "min_leo_version=${INPUT_MIN_LEO}"
+            echo "min_snarkos_version=${INPUT_MIN_SNARKOS}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Setup for Act detection
         id: detect_act
@@ -52,9 +54,9 @@ jobs:
           # Determine if we're running under Act
           if [ -n "$ACT" ]; then
             echo "Running in Act testing mode"
-            echo "testing_mode=true" >> $GITHUB_OUTPUT
+            echo "testing_mode=true" >> "$GITHUB_OUTPUT"
           else
-            echo "testing_mode=false" >> $GITHUB_OUTPUT
+            echo "testing_mode=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Authenticate with Registry
@@ -74,8 +76,11 @@ jobs:
           MIN_VERSION="${MIN_LEO_VERSION}"
           MIN_VERSION_NORM=${MIN_VERSION#v}
 
-          # Get the latest releases from GitHub
-          LATEST_TAGS=$(gh api "repos/${LEO_REPO}/releases" --jq '.[].tag_name' | sort -V)
+          # Get Leo CLI source releases only. The repo also publishes crate-specific
+          # tags such as leo-abi-vX.Y.Z that must not become image tags.
+          LATEST_SOURCE_TAGS=$(gh api "repos/${LEO_REPO}/releases" --jq '.[].tag_name' \
+            | grep -E '^leo-lang-v[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9.]+)?$' \
+            | sort -V)
 
           # Get current tags from the container registry
           readarray -t EXISTING_TAGS < <(
@@ -86,39 +91,57 @@ jobs:
             | jq -r '.[].metadata.container.tags[]' 2>/dev/null || echo ""
           )
 
-          NEW_TAGS=""
-          QUALIFIED_TAGS=()
+          NEW_IMAGE_TAGS=""
+          NEW_SOURCE_TAGS=""
+          QUALIFIED_IMAGE_TAGS=()
 
-          for TAG in $LATEST_TAGS; do
-            TAG_NORM=${TAG#v}
+          for SOURCE_TAG in $LATEST_SOURCE_TAGS; do
+            IMAGE_TAG="${SOURCE_TAG#leo-lang-}"
+            TAG_NORM=${IMAGE_TAG#v}
 
             # Skip tags with versions lower than minimum
-            if [[ "$(printf '%s\n' "$MIN_VERSION_NORM" "$TAG_NORM" | sort -V | head -n1)" != "$TAG_NORM" ]]; then
-              QUALIFIED_TAGS+=("$TAG")
+            if [[ "$(printf '%s\n' "$MIN_VERSION_NORM" "$TAG_NORM" | sort -V | head -n1)" == "$MIN_VERSION_NORM" ]]; then
+              QUALIFIED_IMAGE_TAGS+=("$IMAGE_TAG")
 
-              if [[ ! " ${EXISTING_TAGS[*]} " =~ " ${TAG} " ]]; then
-                if [[ -n "$NEW_TAGS" ]]; then
-                  NEW_TAGS="$NEW_TAGS,$TAG"
-                else
-                  NEW_TAGS="$TAG"
+              TAG_EXISTS=false
+              for EXISTING_TAG in "${EXISTING_TAGS[@]}"; do
+                if [[ "${EXISTING_TAG}" == "${IMAGE_TAG}" ]]; then
+                  TAG_EXISTS=true
+                  break
                 fi
-                echo "Found new Leo tag: $TAG (meets minimum version $MIN_VERSION)"
+              done
+
+              if [[ "${TAG_EXISTS}" != "true" ]]; then
+                if [[ -n "$NEW_IMAGE_TAGS" ]]; then
+                  NEW_IMAGE_TAGS="$NEW_IMAGE_TAGS,$IMAGE_TAG"
+                  NEW_SOURCE_TAGS="$NEW_SOURCE_TAGS,$SOURCE_TAG"
+                else
+                  NEW_IMAGE_TAGS="$IMAGE_TAG"
+                  NEW_SOURCE_TAGS="$SOURCE_TAG"
+                fi
+                echo "Found new Leo source tag: $SOURCE_TAG -> image tag $IMAGE_TAG (meets minimum version $MIN_VERSION)"
               fi
             else
-              echo "Skipping Leo tag: $TAG (below minimum version $MIN_VERSION)"
+              echo "Skipping Leo source tag: $SOURCE_TAG (below minimum version $MIN_VERSION)"
             fi
           done
 
           # Determine the latest version from all qualified tags
           LATEST_VERSION=""
-          if [ ${#QUALIFIED_TAGS[@]} -gt 0 ]; then
-            SORTED_TAGS=$(printf '%s\n' "${QUALIFIED_TAGS[@]}" | sort -rV)
+          LATEST_SOURCE_TAG=""
+          if [ ${#QUALIFIED_IMAGE_TAGS[@]} -gt 0 ]; then
+            SORTED_TAGS=$(printf '%s\n' "${QUALIFIED_IMAGE_TAGS[@]}" | sort -rV)
             LATEST_VERSION=$(echo "$SORTED_TAGS" | head -n1)
-            echo "Latest Leo version is: $LATEST_VERSION"
+            LATEST_SOURCE_TAG="leo-lang-${LATEST_VERSION}"
+            echo "Latest Leo image version is: $LATEST_VERSION (source tag: $LATEST_SOURCE_TAG)"
           fi
 
-          echo "new_tags=${NEW_TAGS}" >> $GITHUB_OUTPUT
-          echo "latest_version=${LATEST_VERSION}" >> $GITHUB_OUTPUT
+          {
+            echo "new_tags=${NEW_IMAGE_TAGS}"
+            echo "new_source_tags=${NEW_SOURCE_TAGS}"
+            echo "latest_version=${LATEST_VERSION}"
+            echo "latest_source_tag=${LATEST_SOURCE_TAG}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Check for new snarkOS releases
         id: check-snarkos
@@ -131,8 +154,10 @@ jobs:
           MIN_VERSION="${MIN_SNARKOS_VERSION}"
           MIN_VERSION_NORM=${MIN_VERSION#v}
 
-          # Get the latest releases from GitHub
-          LATEST_TAGS=$(gh api "repos/${SNARKOS_REPO}/releases" --jq '.[].tag_name' | sort -V)
+          # Get stable snarkOS releases only.
+          LATEST_TAGS=$(gh api "repos/${SNARKOS_REPO}/releases" --jq '.[].tag_name' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9.]+)?$' \
+            | sort -V)
 
           # Get current aleo-devnet tags from the container registry
           # These are in format vX.Y.Z-vA.B.C (leo-snarkos)
@@ -151,7 +176,7 @@ jobs:
             TAG_NORM=${TAG#v}
 
             # Skip tags with versions lower than minimum
-            if [[ "$(printf '%s\n' "$MIN_VERSION_NORM" "$TAG_NORM" | sort -V | head -n1)" != "$TAG_NORM" ]]; then
+            if [[ "$(printf '%s\n' "$MIN_VERSION_NORM" "$TAG_NORM" | sort -V | head -n1)" == "$MIN_VERSION_NORM" ]]; then
               QUALIFIED_TAGS+=("$TAG")
               echo "Qualified snarkOS tag: $TAG (meets minimum version $MIN_VERSION)"
 
@@ -177,25 +202,30 @@ jobs:
           fi
 
           # Export existing devnet tags for use in trigger step
-          echo "existing_devnet_tags=${EXISTING_DEVNET_TAGS[*]}" >> $GITHUB_OUTPUT
-          echo "qualified_tags=${NEW_TAGS}" >> $GITHUB_OUTPUT
-          echo "latest_version=${LATEST_VERSION}" >> $GITHUB_OUTPUT
+          {
+            echo "existing_devnet_tags=${EXISTING_DEVNET_TAGS[*]}"
+            echo "qualified_tags=${NEW_TAGS}"
+            echo "latest_version=${LATEST_VERSION}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Trigger Leo builds (GitHub)
         if: steps.check-leo.outputs.new_tags != '' && steps.detect_act.outputs.testing_mode != 'true'
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           LEO_NEW_TAGS: ${{ steps.check-leo.outputs.new_tags }}
+          LEO_NEW_SOURCE_TAGS: ${{ steps.check-leo.outputs.new_source_tags }}
           LEO_LATEST_VERSION: ${{ steps.check-leo.outputs.latest_version }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const tags = process.env.LEO_NEW_TAGS.split(',');
+            const tags = process.env.LEO_NEW_TAGS.split(',').filter(Boolean);
+            const sourceTags = process.env.LEO_NEW_SOURCE_TAGS.split(',').filter(Boolean);
             const latestVersion = process.env.LEO_LATEST_VERSION;
 
-            for (const tag of tags) {
+            for (const [index, tag] of tags.entries()) {
+              const sourceTag = sourceTags[index] || '';
               const isLatest = tag === latestVersion;
-              console.log(`Triggering build for Leo tag: ${tag} (Latest: ${isLatest})`);
+              console.log(`Triggering build for Leo image tag: ${tag} from source tag: ${sourceTag} (Latest: ${isLatest})`);
 
               await github.rest.actions.createWorkflowDispatch({
                 owner: context.repo.owner,
@@ -205,6 +235,7 @@ jobs:
                 inputs: {
                   image_name: 'leo-lang',
                   leo_version: tag,
+                  leo_source_tag: sourceTag,
                   tag_latest: isLatest.toString()
                 }
               });
@@ -215,7 +246,9 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           LEO_NEW_TAGS: ${{ steps.check-leo.outputs.new_tags }}
+          LEO_NEW_SOURCE_TAGS: ${{ steps.check-leo.outputs.new_source_tags }}
           LEO_LATEST_VERSION: ${{ steps.check-leo.outputs.latest_version }}
+          LEO_LATEST_SOURCE_TAG: ${{ steps.check-leo.outputs.latest_source_tag }}
           SNARKOS_QUALIFIED_TAGS: ${{ steps.check-snarkos.outputs.qualified_tags }}
           SNARKOS_LATEST_VERSION: ${{ steps.check-snarkos.outputs.latest_version }}
           EXISTING_DEVNET_TAGS: ${{ steps.check-snarkos.outputs.existing_devnet_tags }}
@@ -223,7 +256,9 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const newLeoTags = process.env.LEO_NEW_TAGS.split(',').filter(t => t);
+            const newLeoSourceTags = process.env.LEO_NEW_SOURCE_TAGS.split(',').filter(t => t);
             const latestLeoVersion = process.env.LEO_LATEST_VERSION;
+            const latestLeoSourceTag = process.env.LEO_LATEST_SOURCE_TAG;
             const qualifiedSnarkOsTags = process.env.SNARKOS_QUALIFIED_TAGS.split(',').filter(t => t);
             const latestSnarkOsVersion = process.env.SNARKOS_LATEST_VERSION;
             const existingDevnetTags = process.env.EXISTING_DEVNET_TAGS.split(' ').filter(t => t);
@@ -231,14 +266,16 @@ jobs:
             const buildsToTrigger = [];
 
             // For new Leo versions, build with latest snarkOS
-            for (const leoTag of newLeoTags) {
+            for (const [index, leoTag] of newLeoTags.entries()) {
               if (latestSnarkOsVersion) {
+                const leoSourceTag = newLeoSourceTags[index] || '';
                 const combinedTag = `${leoTag}-${latestSnarkOsVersion}`;
                 if (!existingDevnetTags.includes(combinedTag)) {
                   buildsToTrigger.push({
                     leoVersion: leoTag,
+                    leoSourceTag,
                     snarkOsVersion: latestSnarkOsVersion,
-                    isLatest: leoTag === latestLeoVersion && latestSnarkOsVersion === latestSnarkOsVersion
+                    isLatest: leoTag === latestLeoVersion
                   });
                 }
               }
@@ -257,8 +294,9 @@ jobs:
                   if (!alreadyQueued) {
                     buildsToTrigger.push({
                       leoVersion: latestLeoVersion,
+                      leoSourceTag: latestLeoSourceTag,
                       snarkOsVersion: snarkOsTag,
-                      isLatest: latestLeoVersion === latestLeoVersion && snarkOsTag === latestSnarkOsVersion
+                      isLatest: snarkOsTag === latestSnarkOsVersion
                     });
                   }
                 }
@@ -267,7 +305,7 @@ jobs:
 
             // Trigger builds
             for (const build of buildsToTrigger) {
-              console.log(`Triggering aleo-devnet build: Leo ${build.leoVersion} + snarkOS ${build.snarkOsVersion} (Latest: ${build.isLatest})`);
+              console.log(`Triggering aleo-devnet build: Leo ${build.leoVersion} (${build.leoSourceTag}) + snarkOS ${build.snarkOsVersion} (Latest: ${build.isLatest})`);
 
               await github.rest.actions.createWorkflowDispatch({
                 owner: context.repo.owner,
@@ -277,6 +315,7 @@ jobs:
                 inputs: {
                   image_name: 'aleo-devnet',
                   leo_version: build.leoVersion,
+                  leo_source_tag: build.leoSourceTag,
                   snarkos_version: build.snarkOsVersion,
                   tag_latest: build.isLatest.toString()
                 }
@@ -292,7 +331,9 @@ jobs:
         if: steps.detect_act.outputs.testing_mode == 'true'
         env:
           LEO_NEW_TAGS: ${{ steps.check-leo.outputs.new_tags }}
+          LEO_NEW_SOURCE_TAGS: ${{ steps.check-leo.outputs.new_source_tags }}
           LEO_LATEST_VERSION: ${{ steps.check-leo.outputs.latest_version }}
+          LEO_LATEST_SOURCE_TAG: ${{ steps.check-leo.outputs.latest_source_tag }}
           SNARKOS_LATEST_VERSION: ${{ steps.check-snarkos.outputs.latest_version }}
           SNARKOS_QUALIFIED_TAGS: ${{ steps.check-snarkos.outputs.qualified_tags }}
         run: |
@@ -301,12 +342,17 @@ jobs:
           # Process Leo triggers
           if [ -n "${LEO_NEW_TAGS}" ]; then
             echo "Leo tags to build: ${LEO_NEW_TAGS}"
+            echo "Leo source tags to build: ${LEO_NEW_SOURCE_TAGS}"
             echo "Leo latest version: ${LEO_LATEST_VERSION}"
+            echo "Leo latest source tag: ${LEO_LATEST_SOURCE_TAG}"
 
             IFS=',' read -ra TAGS <<< "${LEO_NEW_TAGS}"
+            IFS=',' read -ra SOURCE_TAGS <<< "${LEO_NEW_SOURCE_TAGS}"
             LATEST="${LEO_LATEST_VERSION}"
 
-            for TAG in "${TAGS[@]}"; do
+            for INDEX in "${!TAGS[@]}"; do
+              TAG="${TAGS[$INDEX]}"
+              SOURCE_TAG="${SOURCE_TAGS[$INDEX]:-}"
               IS_LATEST="false"
               if [ "$TAG" = "$LATEST" ]; then
                 IS_LATEST="true"
@@ -315,6 +361,7 @@ jobs:
               echo "Would trigger: manual-build.yml for Leo with:"
               echo "  - image_name: leo-lang"
               echo "  - leo_version: $TAG"
+              echo "  - leo_source_tag: $SOURCE_TAG"
               echo "  - tag_latest: $IS_LATEST"
               echo ""
             done

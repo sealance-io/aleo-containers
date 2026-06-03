@@ -124,11 +124,24 @@ retry_command() {
   return $return_code
 }
 
+# Resolve the upstream Leo source tag while keeping public image tags normalized.
+resolve_leo_source_tag() {
+  local leo_version="$1"
+
+  if [[ -n "${LEO_SOURCE_TAG:-}" ]]; then
+    echo "${LEO_SOURCE_TAG}"
+  elif [[ "$leo_version" == "v4.1.0" ]]; then
+    echo "leo-lang-v4.1.0"
+  else
+    echo "$leo_version"
+  fi
+}
+
 # Infer Rust toolchain version from upstream repo's rust-toolchain.toml
 # Falls back silently if fetching or parsing fails
 infer_rust_version() {
   local repo_url="$1"  # e.g., https://github.com/ProvableHQ/leo
-  local tag="$2"       # e.g., v4.0.2
+  local tag="$2"       # e.g., leo-lang-v4.1.0
 
   # Extract org/repo from GitHub URL (strip prefix and trailing .git)
   local repo_path
@@ -139,6 +152,10 @@ infer_rust_version() {
   channel=$(curl -sSf --max-time 10 "$raw_url" 2>/dev/null \
     | sed -n 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
     | tr -d '[:space:]') || true
+
+  if [[ "$channel" =~ ^[0-9]+\.[0-9]+$ ]]; then
+    channel="${channel}.0"
+  fi
 
   if [[ -n "$channel" && "$channel" != *"nightly"* ]]; then
     echo "$channel"
@@ -199,7 +216,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Examples:"
       echo "  $0 --dockerfile leo.Dockerfile --image-name leo-lang --variant node24"
-      echo "  # Produces: leo-lang:v4.0.2-node24, leo-lang:latest"
+      echo "  # Produces: leo-lang:v4.1.0-node24, leo-lang:latest"
       exit 0
       ;;
     *)
@@ -211,14 +228,15 @@ done
 
 # Set project-specific version variables based on image name
 if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
-  PROJECT_VERSION=${LEO_VERSION:-"v4.0.2"}
+  PROJECT_VERSION=${LEO_VERSION:-"v4.1.0"}
+  LEO_SOURCE_TAG=$(resolve_leo_source_tag "$PROJECT_VERSION")
   PROJECT_VERSION_ARG="LEO_VERSION"
   PROJECT_REPO=${LEO_REPO:-"https://github.com/ProvableHQ/leo"}
   PROJECT_REPO_ARG="LEO_REPO"
 elif [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
   # Aleo-devnet uses both LEO and SNARKOS versions
-  LEO_VERSION=${LEO_VERSION:-"v4.0.2"}
-  SNARKOS_VERSION=${SNARKOS_VERSION:-"v4.6.0"}
+  LEO_VERSION=${LEO_VERSION:-"v4.1.0"}
+  SNARKOS_VERSION=${SNARKOS_VERSION:-"v4.7.0"}
   PROJECT_VERSION="${LEO_VERSION}-${SNARKOS_VERSION}"
   # For aleo-devnet, we'll pass both versions as build args
   PROJECT_VERSION_ARG="LEO_VERSION"
@@ -233,7 +251,7 @@ fi
 # Infer RUST_VERSION from upstream if not explicitly set
 if [[ -z "${RUST_VERSION:-}" ]]; then
   if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
-    INFERRED_RUST=$(infer_rust_version "$PROJECT_REPO" "$PROJECT_VERSION") || true
+    INFERRED_RUST=$(infer_rust_version "$PROJECT_REPO" "$LEO_SOURCE_TAG") || true
   elif [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
     INFERRED_RUST=$(infer_rust_version "https://github.com/ProvableHQ/snarkOS" "$SNARKOS_VERSION") || true
   fi
@@ -241,7 +259,11 @@ if [[ -z "${RUST_VERSION:-}" ]]; then
     RUST_VERSION="$INFERRED_RUST"
     echo "Inferred Rust toolchain version: $RUST_VERSION (from upstream rust-toolchain.toml)"
   else
-    RUST_VERSION="1.94.1"
+    if [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
+      RUST_VERSION="1.88.0"
+    else
+      RUST_VERSION="1.96.0"
+    fi
     echo "Could not infer Rust version, using default: $RUST_VERSION"
   fi
 fi
@@ -253,6 +275,9 @@ if [[ -n "$VARIANT" ]]; then
 fi
 if [[ -n "$PROJECT_REPO" ]]; then
   echo "Repository: $PROJECT_REPO"
+fi
+if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
+  echo "Leo source tag: $LEO_SOURCE_TAG"
 fi
 
 # Check registry credentials if we're pushing
@@ -299,6 +324,9 @@ build_and_push() {
     common_build_args+=("--build-arg" "${PROJECT_VERSION_ARG}=${PROJECT_VERSION}")
     if [[ -n "$PROJECT_REPO_ARG" ]]; then
       common_build_args+=("--build-arg" "${PROJECT_REPO_ARG}=${PROJECT_REPO}")
+    fi
+    if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
+      common_build_args+=("--build-arg" "LEO_SOURCE_TAG=${LEO_SOURCE_TAG}")
     fi
     common_build_args+=("--build-arg" "DEBIAN_RELEASE=${DEBIAN_RELEASE}")
     common_build_args+=("--build-arg" "RUST_VERSION=${RUST_VERSION}")

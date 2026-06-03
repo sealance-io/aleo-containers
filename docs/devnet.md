@@ -49,7 +49,7 @@ This means snapshot images are fully configurable via `-e` env vars, just like t
 1. Clone `sealance-io/compliant-transfer-aleo` at specified commit (SSH with fallback)
 2. `npm ci --ignore-scripts` + `npm run postinstall` + `npm run build` + `npm run compile`
 3. Start devnet container with volume mounted at `/aleo/data` (only captures ledger state, not runtime files)
-4. Generate `CONSENSUS_VERSION_HEIGHTS=0,1,2,...,N-1` to accelerate reaching target consensus version
+4. Generate `CONSENSUS_VERSION_HEIGHTS=0,1,2,...,N-1` to accelerate reaching target consensus version (default target: `15`, default heights: `0..14`)
 5. Poll `http://localhost:3030/testnet/consensus_version` until >= target (max 100 retries, 5s apart)
 6. Deploy programs via `npm run deploy:devnet`
 7. **Pre-shutdown verification**: Query REST API for each program in `required-programs.txt` (retries up to 10x)
