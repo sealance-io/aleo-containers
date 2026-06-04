@@ -15,7 +15,7 @@ ARG LEO_SOURCE_TAG=leo-lang-v4.1.0
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
 
 # Install cargo-chef and git
-RUN cargo install cargo-chef \
+RUN cargo install cargo-chef --locked \
     && apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
@@ -47,7 +47,7 @@ ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 # clang (libclang) + build-essential are required by librocksdb-sys, a transitive
 # dependency introduced in Leo v4.1.0: bindgen needs libclang and the bundled
 # RocksDB C++ sources need a C++ compiler. Mirrors aleo-devnet.Dockerfile's snarkOS builder.
-RUN cargo install cargo-chef \
+RUN cargo install cargo-chef --locked \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
     git \
