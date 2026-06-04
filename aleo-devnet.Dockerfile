@@ -21,7 +21,7 @@ FROM rust:${RUST_VERSION}-trixie AS snarkos-planner
 ARG SNARKOS_VERSION
 
 # Install cargo-chef and git
-RUN cargo install cargo-chef \
+RUN cargo install cargo-chef --locked \
     && apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
@@ -43,7 +43,7 @@ FROM rust:${RUST_VERSION}-trixie AS snarkos-builder
 ARG SNARKOS_VERSION
 
 # Install cargo-chef and build dependencies
-RUN cargo install cargo-chef \
+RUN cargo install cargo-chef --locked \
     && apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     clang \
