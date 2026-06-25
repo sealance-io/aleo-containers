@@ -27,7 +27,7 @@ snapshot Dockerfile (generated) → ghcr.io/sealance-io/aleo-devnet-custom:tag
 # Build aleo-devnet locally (requires leo-lang image)
 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet --local-arch --no-push
 
-# Build deployment snapshot (default base v4.2.0-v4.7.3, consensus 15)
+# Build deployment snapshot (default base v4.3.0-v4.8.1, consensus 16)
 ./build-publish-deployment-snapshot.sh --commit main --skip-push
 
 # Lint (required before completing any task)
@@ -62,14 +62,18 @@ Both Dockerfiles use [cargo-chef](https://github.com/LukeMathWalker/cargo-chef) 
 ### Rust Toolchain Version Handling
 
 Two layers work together:
-1. **Build-time inference**: `infer_rust_version()` in the build script (and CI) fetches upstream `rust-toolchain.toml` to set the Docker base image tag. Leo inference uses `LEO_SOURCE_TAG`; snarkOS inference uses `SNARKOS_VERSION`.
+1. **Build-time inference**: `infer_rust_version()` in the build script (and CI) fetches upstream `rust-toolchain.toml` to set the Docker base image tag. Leo inference uses `LEO_SOURCE_TAG`; snarkOS inference uses `SNARKOS_SOURCE_TAG`.
 2. **Dockerfile-level**: The actual compiler is determined by `rust-toolchain.toml` copied from the cloned repo. The base image just needs `rustup`.
 
-`RUST_VERSION` is auto-inferred — only override explicitly. Keep Rust per component: Leo `v4.2.0` uses Rust `1.96.0`; snarkOS `v4.7.3` declares Rust `1.88`, normalized to Docker base tag `1.88.0`.
+`RUST_VERSION` is auto-inferred — only override explicitly. Keep Rust per component: Leo `v4.3.0` uses Rust `1.96.0`; snarkOS `v4.8.1` (source tag `testnet-v4.8.1`) declares Rust `1.88`, normalized to Docker base tag `1.88.0`.
 
 ### Leo Source Tags vs Image Tags
 
-Public Leo image tags are normalized (`LEO_VERSION=v4.2.0`), but upstream source uses `LEO_SOURCE_TAG=leo-lang-v4.2.0`. `LEO_VERSION` controls published image tags; `LEO_SOURCE_TAG` controls the Leo git clone and Rust inference. If unset, only the default `v4.2.0` derives `leo-lang-v4.2.0`; other versions fall back to `LEO_VERSION`.
+Public Leo image tags are normalized (`LEO_VERSION=v4.3.0`), but upstream source uses `LEO_SOURCE_TAG=leo-lang-v4.3.0`. `LEO_VERSION` controls published image tags; `LEO_SOURCE_TAG` controls the Leo git clone and Rust inference. If unset, only the default `v4.3.0` derives `leo-lang-v4.3.0`; other versions fall back to `LEO_VERSION`.
+
+### snarkOS Source Tags vs Image Tags
+
+Same split as Leo. `SNARKOS_VERSION` (e.g. `v4.8.1`) is the normalized image component used in `vLEO-vSNARKOS` tags and the `snarkos.version` label; `SNARKOS_SOURCE_TAG` controls the snarkOS git clone and Rust inference and is recorded via the `snarkos.source-tag` label. Needed because `v4.8.1` is published from the pre-release tag `testnet-v4.8.1`. If unset, only `SNARKOS_VERSION=v4.8.1` derives `testnet-v4.8.1`; other versions (e.g. `v4.7.3`) pass through unchanged.
 
 ### Devnet Entrypoint Three-Way Branching
 
@@ -85,7 +89,7 @@ Public Leo image tags are normalized (`LEO_VERSION=v4.2.0`), but upstream source
 - **Hadolint ignores**: `.hadolint.yaml` ignores DL3008 and DL3059 intentionally — do not remove
 - **Fail-closed policy**: Publish flows require a non-empty program list from `required-programs.txt`
 - **snarkOS features**: Build uses `default,snarkos-node-metrics,test_network` — `test_network` is required for devnet
-- **Snapshot consensus**: Deployment snapshots default to consensus version 15 and generated heights `0..14`
+- **Snapshot consensus**: Deployment snapshots default to consensus version 16 and generated heights `0..15`
 
 ### CI Hardening (maintain when editing workflows)
 
