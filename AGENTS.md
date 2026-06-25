@@ -42,14 +42,14 @@ snapshot Dockerfile (generated) → ghcr.io/sealance-io/aleo-devnet-custom:tag
 
 ```bash
 ./build-publish-deployment-snapshot.sh --commit main --skip-push
-./build-publish-deployment-snapshot.sh --commit main --version v4.2.0-v4.7.3 --consensus-version 15
+./build-publish-deployment-snapshot.sh --commit main --version v4.3.0-v4.8.1 --consensus-version 16
 ```
 
 ### Run Containers
 
 ```bash
-docker run --rm ghcr.io/sealance-io/leo-lang:v4.2.0 leo --help
-docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/aleo/data ghcr.io/sealance-io/aleo-devnet:v4.2.0-v4.7.3
+docker run --rm ghcr.io/sealance-io/leo-lang:v4.3.0 leo --help
+docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/aleo/data ghcr.io/sealance-io/aleo-devnet:v4.3.0-v4.8.1
 curl http://localhost:3030/testnet/latest/height
 ```
 
@@ -69,11 +69,12 @@ All scripts use `set -euo pipefail` with `IFS=$'\n\t'` and are validated with [s
 
 - **Build order**: `leo-lang` must be built/published before `aleo-devnet` (`COPY --from` dependency)
 - **Version format**: Devnet tags are strictly `vX.Y.Z-vA.B.C` (Leo-snarkOS)
-- **Leo source tag split**: Public image tags stay normalized (`LEO_VERSION=v4.2.0`), while Leo `v4.2.0` clones from upstream `LEO_SOURCE_TAG=leo-lang-v4.2.0`
+- **Leo source tag split**: Public image tags stay normalized (`LEO_VERSION=v4.3.0`), while Leo `v4.3.0` clones from upstream `LEO_SOURCE_TAG=leo-lang-v4.3.0`
+- **snarkOS source tag split**: Same pattern — image component stays normalized (`SNARKOS_VERSION=v4.8.1`), while the clone/Rust inference use `SNARKOS_SOURCE_TAG=testnet-v4.8.1` (recorded via the `snarkos.source-tag` label). Other versions (e.g. `v4.7.3`) pass through unchanged
 - **Minimum versions**: Leo >= v3.5.0, snarkOS >= v4.5.3 (required for non-root user and `/aleo/data` layout)
 - **Hadolint ignores**: `.hadolint.yaml` ignores DL3008 and DL3059 intentionally — do not remove
-- **Rust version**: `RUST_VERSION` is auto-inferred from upstream `rust-toolchain.toml`; keep it per component (Leo v4.2.0 uses 1.96.0, snarkOS v4.7.3 declares 1.88 and Docker base tags normalize to 1.88.0)
-- **Snapshot consensus**: Deployment snapshots default to consensus version 15 and generated heights `0..14`
+- **Rust version**: `RUST_VERSION` is auto-inferred from upstream `rust-toolchain.toml`; keep it per component (Leo v4.3.0 uses 1.96.0, snarkOS v4.8.1 / `testnet-v4.8.1` declares 1.88 and Docker base tags normalize to 1.88.0)
+- **Snapshot consensus**: Deployment snapshots default to consensus version 16 and generated heights `0..15`
 - **Fail-closed policy**: Publish flows require a non-empty program list from `required-programs.txt`
 - **SHA-pinned actions**: All workflow `uses:` reference full commit SHAs, not mutable tags — include version as trailing comment
 - **`persist-credentials: false`**: Required on all `actions/checkout` steps

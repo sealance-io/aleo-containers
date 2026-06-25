@@ -11,10 +11,10 @@ on:
           - leo-lang
           - aleo-devnet
       leo_version:
-        description: 'Leo image version (e.g., v4.2.0)'
+        description: 'Leo image version (e.g., v4.3.0)'
         required: true
         type: string
-        default: 'v4.2.0'
+        default: 'v4.3.0'
       leo_source_tag:
         description: 'Leo upstream source tag (leo-lang only; blank derives default)'
         required: false
@@ -23,8 +23,13 @@ on:
       snarkos_version:
         description: 'snarkOS version (aleo-devnet only)'
         type: string
-        default: 'v4.7.3'
+        default: 'v4.8.1'
         required: false
+      snarkos_source_tag:
+        description: 'snarkOS upstream source tag (aleo-devnet only; blank derives default)'
+        required: false
+        type: string
+        default: ''
       tag_latest:
         description: 'Tag as latest'
         type: boolean
@@ -42,6 +47,7 @@ jobs:
       project_version: ${{ steps.derive.outputs.project_version }}
       leo_source_tag: ${{ steps.derive.outputs.leo_source_tag }}
       snarkos_version: ${{ steps.derive.outputs.snarkos_version }}
+      snarkos_source_tag: ${{ steps.derive.outputs.snarkos_source_tag }}
     steps:
       - name: Derive parameters from image name
         id: derive
@@ -50,11 +56,13 @@ jobs:
           INPUT_LEO_VERSION: ${{ inputs.leo_version }}
           INPUT_LEO_SOURCE_TAG: ${{ inputs.leo_source_tag }}
           INPUT_SNARKOS_VERSION: ${{ inputs.snarkos_version }}
+          INPUT_SNARKOS_SOURCE_TAG: ${{ inputs.snarkos_source_tag }}
         run: |
           LEO_VERSION="${INPUT_LEO_VERSION}"
           LEO_SOURCE_TAG="${INPUT_LEO_SOURCE_TAG}"
           SNARKOS_VERSION="${INPUT_SNARKOS_VERSION}"
-          SNARKOS_VERSION="${SNARKOS_VERSION:-v4.7.3}"
+          SNARKOS_VERSION="${SNARKOS_VERSION:-v4.8.1}"
+          SNARKOS_SOURCE_TAG="${INPUT_SNARKOS_SOURCE_TAG}"
 
           if [[ "${INPUT_IMAGE_NAME}" == "leo-lang" ]]; then
             if [[ -z "${LEO_SOURCE_TAG}" ]]; then
@@ -62,6 +70,8 @@ jobs:
                 LEO_SOURCE_TAG="leo-lang-v4.1.0"
               elif [[ "${LEO_VERSION}" == "v4.2.0" ]]; then
                 LEO_SOURCE_TAG="leo-lang-v4.2.0"
+              elif [[ "${LEO_VERSION}" == "v4.3.0" ]]; then
+                LEO_SOURCE_TAG="leo-lang-v4.3.0"
               else
                 LEO_SOURCE_TAG="${LEO_VERSION}"
               fi
@@ -73,15 +83,26 @@ jobs:
               echo "leo_source_tag=${LEO_SOURCE_TAG}"
             } >> "$GITHUB_OUTPUT"
           elif [[ "${INPUT_IMAGE_NAME}" == "aleo-devnet" ]]; then
+            # Image component stays normalized; the source tag drives clone/Rust inference.
+            if [[ -z "${SNARKOS_SOURCE_TAG}" ]]; then
+              if [[ "${SNARKOS_VERSION}" == "v4.8.1" ]]; then
+                SNARKOS_SOURCE_TAG="testnet-v4.8.1"
+              else
+                SNARKOS_SOURCE_TAG="${SNARKOS_VERSION}"
+              fi
+            fi
             {
               echo "dockerfile=aleo-devnet.Dockerfile"
-              # For aleo-devnet, project_version is combined: v4.1.0-v4.7.0
+              # For aleo-devnet, project_version is combined: v4.3.0-v4.8.1
               echo "project_version=${LEO_VERSION}-${SNARKOS_VERSION}"
               echo "leo_source_tag="
             } >> "$GITHUB_OUTPUT"
           fi
 
-          echo "snarkos_version=${SNARKOS_VERSION}" >> "$GITHUB_OUTPUT"
+          {
+            echo "snarkos_version=${SNARKOS_VERSION}"
+            echo "snarkos_source_tag=${SNARKOS_SOURCE_TAG}"
+          } >> "$GITHUB_OUTPUT"
 
   build:
     needs: derive-params
@@ -96,6 +117,7 @@ jobs:
       leo_source_tag: ${{ needs.derive-params.outputs.leo_source_tag }}
       leo_version: ${{ inputs.leo_version }}
       snarkos_version: ${{ needs.derive-params.outputs.snarkos_version }}
+      snarkos_source_tag: ${{ needs.derive-params.outputs.snarkos_source_tag }}
       tag_latest: ${{ inputs.tag_latest }}
     secrets:
       registry_token: ${{ secrets.GITHUB_TOKEN }}

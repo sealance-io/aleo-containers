@@ -3,8 +3,12 @@
 # Run: docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/aleo/data aleo-devnet
 
 # Build arguments
-ARG LEO_VERSION=v4.2.0
-ARG SNARKOS_VERSION=v4.7.3
+ARG LEO_VERSION=v4.3.0
+ARG SNARKOS_VERSION=v4.8.1
+# Upstream snarkOS source tag. The image component stays a normalized vX.Y.Z tag
+# (SNARKOS_VERSION), while the git clone / Rust inference may use a non-normalized
+# upstream tag (e.g. a pre-release). Mirrors the Leo LEO_SOURCE_TAG split.
+ARG SNARKOS_SOURCE_TAG=testnet-v4.8.1
 # Used to pin Rust base images.
 ARG RUST_VERSION=1.88.0
 
@@ -18,7 +22,7 @@ FROM ghcr.io/sealance-io/leo-lang:${LEO_VERSION} AS leo-image
 # =============================================================================
 FROM rust:${RUST_VERSION}-trixie AS snarkos-planner
 
-ARG SNARKOS_VERSION
+ARG SNARKOS_SOURCE_TAG
 
 # Install cargo-chef and git
 RUN cargo install cargo-chef --locked \
@@ -28,7 +32,7 @@ RUN cargo install cargo-chef --locked \
 
 WORKDIR /build
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
-RUN git clone --branch ${SNARKOS_VERSION} --depth 1 https://github.com/ProvableHQ/snarkOS.git
+RUN git clone --branch ${SNARKOS_SOURCE_TAG} --depth 1 https://github.com/ProvableHQ/snarkOS.git
 
 WORKDIR /build/snarkOS
 RUN cp rust-toolchain.toml /build/rust-toolchain.toml \
@@ -40,7 +44,7 @@ RUN cp rust-toolchain.toml /build/rust-toolchain.toml \
 # =============================================================================
 FROM rust:${RUST_VERSION}-trixie AS snarkos-builder
 
-ARG SNARKOS_VERSION
+ARG SNARKOS_SOURCE_TAG
 
 # Install cargo-chef and build dependencies
 RUN cargo install cargo-chef --locked \
@@ -70,7 +74,7 @@ RUN cargo chef cook --release --recipe-path recipe.json \
 
 # Clone and build snarkOS - dependencies already compiled
 # Clone to /src to avoid conflict with cargo chef's generated structure
-RUN git clone --branch ${SNARKOS_VERSION} --depth 1 https://github.com/ProvableHQ/snarkOS.git /src/snarkOS
+RUN git clone --branch ${SNARKOS_SOURCE_TAG} --depth 1 https://github.com/ProvableHQ/snarkOS.git /src/snarkOS
 
 WORKDIR /src/snarkOS
 
@@ -181,9 +185,11 @@ CMD []
 # Build metadata
 ARG LEO_VERSION
 ARG SNARKOS_VERSION
+ARG SNARKOS_SOURCE_TAG
 LABEL org.opencontainers.image.title="Aleo Devnet" \
       org.opencontainers.image.description="Leo CLI with snarkOS for local Aleo development network" \
       org.opencontainers.image.documentation="https://developer.aleo.org" \
       leo.version="${LEO_VERSION}" \
       snarkos.version="${SNARKOS_VERSION}" \
+      snarkos.source-tag="${SNARKOS_SOURCE_TAG}" \
       build.features="default,snarkos-node-metrics,test_network"

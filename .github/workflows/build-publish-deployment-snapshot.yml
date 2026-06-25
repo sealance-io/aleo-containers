@@ -11,7 +11,7 @@ on:
       aleo-devnet-version:
         description: 'Version tag for aleo-devnet base image'
         required: false
-        default: 'v4.2.0-v4.7.3'
+        default: 'v4.3.0-v4.8.1'
         type: string
       image-name:
         description: 'Custom image name (without registry)'
@@ -29,9 +29,9 @@ on:
         default: false
         type: boolean
       consensus-version:
-        description: 'Target consensus version for devnet (default: 15)'
+        description: 'Target consensus version for devnet (default: 16)'
         required: false
-        default: 15
+        default: 16
         type: number
       required-programs:
         description: 'Comma-separated program IDs to verify. Empty = read from required-programs.txt'
@@ -53,7 +53,7 @@ on:
       aleo-devnet-version:
         description: 'Version tag for aleo-devnet base image'
         required: false
-        default: 'v4.2.0-v4.7.3'
+        default: 'v4.3.0-v4.8.1'
         type: string
       image-name:
         description: 'Custom image name (without registry)'
@@ -71,9 +71,9 @@ on:
         default: false
         type: boolean
       consensus-version:
-        description: 'Target consensus version for devnet (default: 15)'
+        description: 'Target consensus version for devnet (default: 16)'
         required: false
-        default: 15
+        default: 16
         type: number
       required-programs:
         description: 'Comma-separated program IDs to verify. Empty = read from required-programs.txt'

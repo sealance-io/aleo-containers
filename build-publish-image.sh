@@ -134,8 +134,25 @@ resolve_leo_source_tag() {
     echo "leo-lang-v4.1.0"
   elif [[ "$leo_version" == "v4.2.0" ]]; then
     echo "leo-lang-v4.2.0"
+  elif [[ "$leo_version" == "v4.3.0" ]]; then
+    echo "leo-lang-v4.3.0"
   else
     echo "$leo_version"
+  fi
+}
+
+# Resolve the upstream snarkOS source tag while keeping public image tags normalized.
+# Mirrors resolve_leo_source_tag: the image component stays a vX.Y.Z tag while the
+# git clone / Rust inference may use a non-normalized upstream tag (e.g. a pre-release).
+resolve_snarkos_source_tag() {
+  local snarkos_version="$1"
+
+  if [[ -n "${SNARKOS_SOURCE_TAG:-}" ]]; then
+    echo "${SNARKOS_SOURCE_TAG}"
+  elif [[ "$snarkos_version" == "v4.8.1" ]]; then
+    echo "testnet-v4.8.1"
+  else
+    echo "$snarkos_version"
   fi
 }
 
@@ -218,7 +235,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Examples:"
       echo "  $0 --dockerfile leo.Dockerfile --image-name leo-lang --variant node24"
-      echo "  # Produces: leo-lang:v4.2.0-node24, leo-lang:latest"
+      echo "  # Produces: leo-lang:v4.3.0-node24, leo-lang:latest"
       exit 0
       ;;
     *)
@@ -230,15 +247,17 @@ done
 
 # Set project-specific version variables based on image name
 if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
-  PROJECT_VERSION=${LEO_VERSION:-"v4.2.0"}
+  PROJECT_VERSION=${LEO_VERSION:-"v4.3.0"}
   LEO_SOURCE_TAG=$(resolve_leo_source_tag "$PROJECT_VERSION")
   PROJECT_VERSION_ARG="LEO_VERSION"
   PROJECT_REPO=${LEO_REPO:-"https://github.com/ProvableHQ/leo"}
   PROJECT_REPO_ARG="LEO_REPO"
 elif [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
   # Aleo-devnet uses both LEO and SNARKOS versions
-  LEO_VERSION=${LEO_VERSION:-"v4.2.0"}
-  SNARKOS_VERSION=${SNARKOS_VERSION:-"v4.7.3"}
+  LEO_VERSION=${LEO_VERSION:-"v4.3.0"}
+  SNARKOS_VERSION=${SNARKOS_VERSION:-"v4.8.1"}
+  SNARKOS_SOURCE_TAG=$(resolve_snarkos_source_tag "$SNARKOS_VERSION")
+  # Image component stays normalized; SNARKOS_SOURCE_TAG drives clone/Rust inference.
   PROJECT_VERSION="${LEO_VERSION}-${SNARKOS_VERSION}"
   # For aleo-devnet, we'll pass both versions as build args
   PROJECT_VERSION_ARG="LEO_VERSION"
@@ -255,7 +274,7 @@ if [[ -z "${RUST_VERSION:-}" ]]; then
   if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
     INFERRED_RUST=$(infer_rust_version "$PROJECT_REPO" "$LEO_SOURCE_TAG") || true
   elif [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
-    INFERRED_RUST=$(infer_rust_version "https://github.com/ProvableHQ/snarkOS" "$SNARKOS_VERSION") || true
+    INFERRED_RUST=$(infer_rust_version "https://github.com/ProvableHQ/snarkOS" "$SNARKOS_SOURCE_TAG") || true
   fi
   if [[ -n "${INFERRED_RUST:-}" ]]; then
     RUST_VERSION="$INFERRED_RUST"
@@ -280,6 +299,8 @@ if [[ -n "$PROJECT_REPO" ]]; then
 fi
 if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
   echo "Leo source tag: $LEO_SOURCE_TAG"
+elif [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
+  echo "snarkOS source tag: $SNARKOS_SOURCE_TAG"
 fi
 
 # Check registry credentials if we're pushing
@@ -319,6 +340,7 @@ build_and_push() {
     common_build_args+=(
       "--build-arg" "LEO_VERSION=${LEO_VERSION}"
       "--build-arg" "SNARKOS_VERSION=${SNARKOS_VERSION}"
+      "--build-arg" "SNARKOS_SOURCE_TAG=${SNARKOS_SOURCE_TAG}"
       "--build-arg" "RUST_VERSION=${RUST_VERSION}"
     )
   else

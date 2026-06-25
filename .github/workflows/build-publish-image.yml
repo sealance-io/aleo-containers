@@ -53,7 +53,12 @@ on:
       snarkos_version:
         description: 'snarkOS version for aleo-devnet'
         required: false
-        default: 'v4.7.3'
+        default: 'v4.8.1'
+        type: string
+      snarkos_source_tag:
+        description: 'Upstream snarkOS source tag for aleo-devnet builds (e.g., testnet-v4.8.1; blank derives default)'
+        required: false
+        default: ''
         type: string
       rust_version:
         description: 'Rust version override (inferred from upstream if not set)'
@@ -63,7 +68,7 @@ on:
       leo_version:
         description: 'Leo version for aleo-devnet (if different from project_version)'
         required: false
-        default: 'v4.2.0'
+        default: 'v4.3.0'
         type: string
     secrets:
       registry_token:
@@ -82,6 +87,7 @@ jobs:
       project_repo_arg: ${{ steps.set-params.outputs.project_repo_arg }}
       project_version_arg: ${{ steps.set-params.outputs.project_version_arg }}
       leo_source_tag: ${{ steps.set-params.outputs.leo_source_tag }}
+      snarkos_source_tag: ${{ steps.set-params.outputs.snarkos_source_tag }}
       uses_target: ${{ steps.set-params.outputs.uses_target }}
       registry_image: ${{ steps.set-params.outputs.registry_image }}
       rust_version: ${{ steps.infer-rust.outputs.rust_version }}
@@ -95,6 +101,8 @@ jobs:
           INPUT_PROJECT_REPO: ${{ inputs.project_repo }}
           INPUT_PROJECT_VERSION: ${{ inputs.project_version }}
           INPUT_LEO_SOURCE_TAG: ${{ inputs.leo_source_tag }}
+          INPUT_SNARKOS_VERSION: ${{ inputs.snarkos_version }}
+          INPUT_SNARKOS_SOURCE_TAG: ${{ inputs.snarkos_source_tag }}
         run: |
           REGISTRY_IMAGE="${INPUT_REGISTRY}/${INPUT_ORGANIZATION}/${INPUT_IMAGE_NAME}"
           echo "registry_image=${REGISTRY_IMAGE}" >> "$GITHUB_OUTPUT"
@@ -106,6 +114,8 @@ jobs:
                 LEO_SOURCE_TAG="leo-lang-v4.1.0"
               elif [[ "${INPUT_PROJECT_VERSION}" == "v4.2.0" ]]; then
                 LEO_SOURCE_TAG="leo-lang-v4.2.0"
+              elif [[ "${INPUT_PROJECT_VERSION}" == "v4.3.0" ]]; then
+                LEO_SOURCE_TAG="leo-lang-v4.3.0"
               else
                 LEO_SOURCE_TAG="${INPUT_PROJECT_VERSION}"
               fi
@@ -115,13 +125,24 @@ jobs:
               echo "project_version_arg=LEO_VERSION"
               echo "project_repo=${INPUT_PROJECT_REPO:-https://github.com/ProvableHQ/leo}"
               echo "leo_source_tag=${LEO_SOURCE_TAG}"
+              echo "snarkos_source_tag="
               echo "uses_target=true"
             } >> "$GITHUB_OUTPUT"
           elif [[ "${INPUT_IMAGE_NAME}" == "aleo-devnet" ]]; then
+            # Image component stays normalized; the source tag drives clone/Rust inference.
+            SNARKOS_SOURCE_TAG="${INPUT_SNARKOS_SOURCE_TAG}"
+            if [[ -z "${SNARKOS_SOURCE_TAG}" ]]; then
+              if [[ "${INPUT_SNARKOS_VERSION}" == "v4.8.1" ]]; then
+                SNARKOS_SOURCE_TAG="testnet-v4.8.1"
+              else
+                SNARKOS_SOURCE_TAG="${INPUT_SNARKOS_VERSION}"
+              fi
+            fi
             {
               echo "project_version_arg=LEO_VERSION"
               echo "project_repo="
               echo "leo_source_tag="
+              echo "snarkos_source_tag=${SNARKOS_SOURCE_TAG}"
               echo "uses_target=false"
             } >> "$GITHUB_OUTPUT"
           else
@@ -136,6 +157,7 @@ jobs:
           INPUT_IMAGE_NAME: ${{ inputs.image_name }}
           PROJECT_REPO: ${{ steps.set-params.outputs.project_repo }}
           LEO_SOURCE_TAG: ${{ steps.set-params.outputs.leo_source_tag }}
+          SNARKOS_SOURCE_TAG: ${{ steps.set-params.outputs.snarkos_source_tag }}
           INPUT_PROJECT_VERSION: ${{ inputs.project_version }}
           INPUT_SNARKOS_VERSION: ${{ inputs.snarkos_version }}
         run: |
@@ -148,7 +170,7 @@ jobs:
               TAG="${LEO_SOURCE_TAG}"
             elif [[ "${INPUT_IMAGE_NAME}" == "aleo-devnet" ]]; then
               REPO_PATH="ProvableHQ/snarkOS"
-              TAG="${INPUT_SNARKOS_VERSION:-v4.7.3}"
+              TAG="${SNARKOS_SOURCE_TAG:-${INPUT_SNARKOS_VERSION:-v4.8.1}}"
             fi
 
             CHANNEL=$(curl -sSf --max-time 10 \
@@ -249,8 +271,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            LEO_VERSION=${{ inputs.leo_version || 'v4.2.0' }}
-            SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.7.3' }}
+            LEO_VERSION=${{ inputs.leo_version || 'v4.3.0' }}
+            SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.8.1' }}
+            SNARKOS_SOURCE_TAG=${{ needs.determine-params.outputs.snarkos_source_tag }}
             RUST_VERSION=${{ needs.determine-params.outputs.rust_version }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}
           cache-from: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }}
