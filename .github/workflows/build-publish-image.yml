@@ -53,7 +53,7 @@ on:
       snarkos_version:
         description: 'snarkOS version for aleo-devnet'
         required: false
-        default: 'v4.7.0'
+        default: 'v4.7.3'
         type: string
       rust_version:
         description: 'Rust version override (inferred from upstream if not set)'
@@ -63,7 +63,7 @@ on:
       leo_version:
         description: 'Leo version for aleo-devnet (if different from project_version)'
         required: false
-        default: 'v4.1.0'
+        default: 'v4.2.0'
         type: string
     secrets:
       registry_token:
@@ -104,6 +104,8 @@ jobs:
             if [[ -z "${LEO_SOURCE_TAG}" ]]; then
               if [[ "${INPUT_PROJECT_VERSION}" == "v4.1.0" ]]; then
                 LEO_SOURCE_TAG="leo-lang-v4.1.0"
+              elif [[ "${INPUT_PROJECT_VERSION}" == "v4.2.0" ]]; then
+                LEO_SOURCE_TAG="leo-lang-v4.2.0"
               else
                 LEO_SOURCE_TAG="${INPUT_PROJECT_VERSION}"
               fi
@@ -146,7 +148,7 @@ jobs:
               TAG="${LEO_SOURCE_TAG}"
             elif [[ "${INPUT_IMAGE_NAME}" == "aleo-devnet" ]]; then
               REPO_PATH="ProvableHQ/snarkOS"
-              TAG="${INPUT_SNARKOS_VERSION:-v4.7.0}"
+              TAG="${INPUT_SNARKOS_VERSION:-v4.7.3}"
             fi
 
             CHANNEL=$(curl -sSf --max-time 10 \
@@ -247,8 +249,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            LEO_VERSION=${{ inputs.leo_version || 'v4.1.0' }}
-            SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.7.0' }}
+            LEO_VERSION=${{ inputs.leo_version || 'v4.2.0' }}
+            SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.7.3' }}
             RUST_VERSION=${{ needs.determine-params.outputs.rust_version }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}
           cache-from: type=registry,ref=${{ needs.determine-params.outputs.registry_image }}:cache-${{ matrix.platform_pair }}
