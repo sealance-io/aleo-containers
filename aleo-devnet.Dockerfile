@@ -47,10 +47,15 @@ FROM rust:${RUST_VERSION}-trixie AS snarkos-builder
 ARG SNARKOS_SOURCE_TAG
 
 # Install cargo-chef and build dependencies
+# libclang-dev provides libclang.so for clang-sys/bindgen, a transitive build
+# dependency introduced by snarkOS testnet-v4.8.1 (snarkVM v4.8.0 line). The
+# clang package alone ships only versioned runtime libs; clang-sys searches for
+# the unversioned libclang.so symlink that libclang-dev installs.
 RUN cargo install cargo-chef --locked \
     && apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     clang \
+    libclang-dev \
     cmake \
     curl \
     gcc \
