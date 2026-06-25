@@ -16,13 +16,7 @@ The build system consists of these primary workflows:
    - Derives parameters (dockerfile, version tags) from minimal inputs
    - Calls the reusable build workflow
 
-3. **Update Detection** (`check-updates.yml`)
-   - Monitors upstream Leo and snarkOS repositories for new versions
-   - Filters Leo source releases to `leo-lang-v*`, normalizes them to `v*` image tags, and applies semantic versioning filters
-   - Triggers `leo-lang` builds for new Leo versions
-   - Triggers `aleo-devnet` builds for new Leo+snarkOS combinations
-
-4. **Deployment Snapshot Workflow** (`build-publish-deployment-snapshot.yml`)
+3. **Deployment Snapshot Workflow** (`build-publish-deployment-snapshot.yml`)
    - Creates custom Aleo devnet images with pre-deployed programs
    - See [Deployment Snapshot Creation](#deployment-snapshot-creation) for the full step-by-step flow
 
@@ -30,12 +24,12 @@ The build system consists of these primary workflows:
 
 Two additional workflows run on push/PR to `main` and enforce required branch protection checks:
 
-5. **Lint** (`lint.yml`)
+4. **Lint** (`lint.yml`)
    - **ShellCheck** (`--severity=warning`) for all `*.sh` scripts
    - **Hadolint** (`--failure-threshold error`) for all `*.Dockerfile` files
    - Rollup job `lint-status` is a **required status check** for PRs
 
-6. **Security Audit** (`security-audit.yml`)
+5. **Security Audit** (`security-audit.yml`)
    - **Zizmor** audits workflow files (pedantic on PR/push, auditor persona on weekly schedule)
    - **Trivy config scan** for Dockerfile misconfigurations — fails on HIGH/CRITICAL
    - **Trivy + Grype image scans** of published images — report-only, schedule/manual only
@@ -111,7 +105,7 @@ Each architecture builds and pushes by content digest, then a merge job creates 
 
 ```
 build-standard (amd64) ──→ push @sha256:abc...  ─┐
-                                                  ├─→ merge-standard ──→ tag: v4.1.0
+                                                  ├─→ merge-standard ──→ tag: v4.2.0
 build-standard (arm64) ──→ push @sha256:def...  ─┘
 ```
 
@@ -125,36 +119,23 @@ Trigger builds via GitHub Actions UI or the `gh` CLI:
 # Build a leo-lang image
 gh workflow run manual-build.yml \
   -f image_name=leo-lang \
-  -f leo_version=v4.1.0 \
-  -f leo_source_tag=leo-lang-v4.1.0
+  -f leo_version=v4.2.0 \
+  -f leo_source_tag=leo-lang-v4.2.0
 
 # Build an aleo-devnet image
 gh workflow run manual-build.yml \
   -f image_name=aleo-devnet \
-  -f leo_version=v4.1.0 \
-  -f snarkos_version=v4.7.0
+  -f leo_version=v4.2.0 \
+  -f snarkos_version=v4.7.3
 
 # Build a deployment snapshot
 gh workflow run build-publish-deployment-snapshot.yml \
   -f git-ref=main \
-  -f aleo-devnet-version=v4.1.0-v4.7.0 \
+  -f aleo-devnet-version=v4.2.0-v4.7.3 \
   -f consensus-version=15
-
-# Check for upstream version updates
-gh workflow run check-updates.yml
 ```
 
 ## How It Works
-
-### Automated Version Detection
-
-1. The weekly check uses GitHub API to fetch release tags from upstream
-2. Leo source tags are filtered to `leo-lang-v*` and normalized to public `v*` image tags
-3. It normalizes version strings for proper semantic comparison
-4. Tags below the minimum version threshold are filtered out
-5. Existing registry tags are checked to avoid duplicate builds
-6. For each new qualifying tag, a build workflow is triggered
-7. Images are built and published to the GitHub Container Registry
 
 ### Deployment Snapshot Creation
 

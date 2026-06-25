@@ -11,10 +11,10 @@ on:
           - leo-lang
           - aleo-devnet
       leo_version:
-        description: 'Leo image version (e.g., v4.1.0)'
+        description: 'Leo image version (e.g., v4.2.0)'
         required: true
         type: string
-        default: 'v4.1.0'
+        default: 'v4.2.0'
       leo_source_tag:
         description: 'Leo upstream source tag (leo-lang only; blank derives default)'
         required: false
@@ -23,7 +23,7 @@ on:
       snarkos_version:
         description: 'snarkOS version (aleo-devnet only)'
         type: string
-        default: 'v4.7.0'
+        default: 'v4.7.3'
         required: false
       tag_latest:
         description: 'Tag as latest'
@@ -54,12 +54,14 @@ jobs:
           LEO_VERSION="${INPUT_LEO_VERSION}"
           LEO_SOURCE_TAG="${INPUT_LEO_SOURCE_TAG}"
           SNARKOS_VERSION="${INPUT_SNARKOS_VERSION}"
-          SNARKOS_VERSION="${SNARKOS_VERSION:-v4.7.0}"
+          SNARKOS_VERSION="${SNARKOS_VERSION:-v4.7.3}"
 
           if [[ "${INPUT_IMAGE_NAME}" == "leo-lang" ]]; then
             if [[ -z "${LEO_SOURCE_TAG}" ]]; then
               if [[ "${LEO_VERSION}" == "v4.1.0" ]]; then
                 LEO_SOURCE_TAG="leo-lang-v4.1.0"
+              elif [[ "${LEO_VERSION}" == "v4.2.0" ]]; then
+                LEO_SOURCE_TAG="leo-lang-v4.2.0"
               else
                 LEO_SOURCE_TAG="${LEO_VERSION}"
               fi

@@ -10,8 +10,8 @@ ARG RUST_VERSION=1.96.0
 # =============================================================================
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as planner
 
-ARG LEO_VERSION=v4.1.0
-ARG LEO_SOURCE_TAG=leo-lang-v4.1.0
+ARG LEO_VERSION=v4.2.0
+ARG LEO_SOURCE_TAG=leo-lang-v4.2.0
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
 
 # Install cargo-chef and git
@@ -36,8 +36,8 @@ RUN cp rust-toolchain.toml /app/rust-toolchain.toml \
 # =============================================================================
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} as builder
 
-ARG LEO_VERSION=v4.1.0
-ARG LEO_SOURCE_TAG=leo-lang-v4.1.0
+ARG LEO_VERSION=v4.2.0
+ARG LEO_SOURCE_TAG=leo-lang-v4.2.0
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
 
 # Force rust to use external Git instead of the internal libgit wrapper
@@ -87,8 +87,8 @@ RUN cp /app/rust-toolchain.toml /src/leo/rust-toolchain.toml \
 # =============================================================================
 FROM node:${NODE_VERSION}-${DEBIAN_RELEASE}-slim as leo
 
-ARG LEO_VERSION=v4.1.0
-ARG LEO_SOURCE_TAG=leo-lang-v4.1.0
+ARG LEO_VERSION=v4.2.0
+ARG LEO_SOURCE_TAG=leo-lang-v4.2.0
 ARG LEO_REPO=https://github.com/ProvableHQ/leo
 LABEL org.opencontainers.image.source="${LEO_REPO}"
 LABEL org.opencontainers.image.description="Leo CLI with NodeJS environment"
