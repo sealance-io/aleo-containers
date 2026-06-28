@@ -11,7 +11,7 @@ on:
       aleo-devnet-version:
         description: 'Version tag for aleo-devnet base image'
         required: false
-        default: 'v4.3.0-v4.8.1'
+        default: 'v4.3.1-v4.8.1'
         type: string
       image-name:
         description: 'Custom image name (without registry)'
@@ -53,7 +53,7 @@ on:
       aleo-devnet-version:
         description: 'Version tag for aleo-devnet base image'
         required: false
-        default: 'v4.3.0-v4.8.1'
+        default: 'v4.3.1-v4.8.1'
         type: string
       image-name:
         description: 'Custom image name (without registry)'

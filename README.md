@@ -11,8 +11,8 @@ This repository provides multi-architecture (AMD64/ARM64) Docker images for Aleo
 
 Pre-built images are available on GitHub Container Registry:
 
-- **Leo Lang**: `ghcr.io/sealance-io/leo-lang:v4.3.0`
-- **Aleo Devnet**: `ghcr.io/sealance-io/aleo-devnet:v4.3.0-v4.8.1`
+- **Leo Lang**: `ghcr.io/sealance-io/leo-lang:v4.3.1`
+- **Aleo Devnet**: `ghcr.io/sealance-io/aleo-devnet:v4.3.1-v4.8.1`
 
 ### Custom Deployment Snapshots
 - **With deployed programs**: `ghcr.io/sealance-io/aleo-devnet-custom:latest`
@@ -22,13 +22,13 @@ You can also use the `latest` tag to always get the most recent version.
 ### Image Contents
 
 #### Leo Lang (`leo-lang`)
-- Leo CLI v4.3.0
+- Leo CLI v4.3.1
 - Node.js v24
 - Debian trixie (slim)
 - Essential SSL libraries
 
 #### Aleo Devnet Image (`aleo-devnet`)
-- Leo CLI v4.3.0
+- Leo CLI v4.3.1
 - snarkOS v4.8.1
 - Pre-downloaded mainnet prover parameters (~2GB)
 - Debian trixie (slim)
@@ -43,16 +43,16 @@ For development, deployment, and running Leo applications:
 
 ```bash
 # Run the Leo CLI directly
-docker run --rm ghcr.io/sealance-io/leo-lang:v4.3.0 leo --help
+docker run --rm ghcr.io/sealance-io/leo-lang:v4.3.1 leo --help
 
 # Check installed versions
-docker run --rm ghcr.io/sealance-io/leo-lang:v4.3.0
+docker run --rm ghcr.io/sealance-io/leo-lang:v4.3.1
 
 # Mount your project directory and work with Leo
-docker run --rm -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v4.3.0 leo build
+docker run --rm -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v4.3.1 leo build
 
 # Start a shell in the container
-docker run --rm -it -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v4.3.0 /bin/bash
+docker run --rm -it -v $(pwd):/app -w /app ghcr.io/sealance-io/leo-lang:v4.3.1 /bin/bash
 ```
 
 ### Aleo Devnet Image
@@ -63,25 +63,25 @@ For running a local Aleo development network with Leo and snarkOS:
 # Run a minimal devnet (4 validators + 1 client)
 docker run -it --rm -p 3030:3030 -p 4130:4130 \
   -v $(pwd)/data:/aleo/data \
-  ghcr.io/sealance-io/aleo-devnet:v4.3.0-v4.8.1
+  ghcr.io/sealance-io/aleo-devnet:v4.3.1-v4.8.1
 
 # Run with custom devnet parameters
 docker run -it --rm -p 3030:3030 -p 4130:4130 \
   -v $(pwd)/data:/aleo/data \
-  ghcr.io/sealance-io/aleo-devnet:v4.3.0-v4.8.1 \
+  ghcr.io/sealance-io/aleo-devnet:v4.3.1-v4.8.1 \
   devnet --storage /aleo/data --clear-storage --yes \
   --verbosity 4 --num-validators 4 --num-clients 2
 
 # Run snarkOS directly instead of Leo devnet command
 docker run -it --rm -p 3030:3030 -p 4130:4130 \
   --entrypoint ./snarkos \
-  ghcr.io/sealance-io/aleo-devnet:v4.3.0-v4.8.1 \
+  ghcr.io/sealance-io/aleo-devnet:v4.3.1-v4.8.1 \
   start --client --nodisplay --node 0.0.0.0:4130 \
   --network 1 --dev 0 --rest 0.0.0.0:3030
 
 # Access Leo CLI for development
 docker run -it --rm -v $(pwd):/app -w /app \
-  ghcr.io/sealance-io/aleo-devnet:v4.3.0-v4.8.1 \
+  ghcr.io/sealance-io/aleo-devnet:v4.3.1-v4.8.1 \
   new my_project
 ```
 #### GitHub Actions Example
@@ -106,7 +106,7 @@ jobs:
       - name: Setup Leo CLI
         uses: sealance-io/setup-leo-action@3fb8fc821388716961eee9146b414fcfc093b32d # v1.1.3
         with:
-          version: '4.3.0'
+          version: '4.3.1'
           rust-version: '1.96.0'
 
       - name: Build Leo project
@@ -120,12 +120,12 @@ See [setup-leo-action](https://github.com/sealance-io/setup-leo-action) for more
 
 ### Leo Image Tags vs Source Tags
 
-Published image tags stay normalized as `v4.3.0`, but the upstream Leo source tag for this release is `leo-lang-v4.3.0`. Build scripts and workflows keep these separate:
+Published image tags stay normalized as `v4.3.1`, but the upstream Leo source tag for this release is `leo-lang-v4.3.1`. Build scripts and workflows keep these separate:
 
-- `LEO_VERSION=v4.3.0` controls the public image tag.
-- `LEO_SOURCE_TAG=leo-lang-v4.3.0` controls the upstream git clone and Rust toolchain inference.
+- `LEO_VERSION=v4.3.1` controls the public image tag.
+- `LEO_SOURCE_TAG=leo-lang-v4.3.1` controls the upstream git clone and Rust toolchain inference.
 
-When `LEO_SOURCE_TAG` is empty, the default `LEO_VERSION=v4.3.0` derives `leo-lang-v4.3.0`; other Leo versions fall back to using `LEO_VERSION` as the source tag for compatibility.
+When `LEO_SOURCE_TAG` is empty, known Leo releases with `leo-lang-*` upstream tags derive the matching source tag automatically; other Leo versions fall back to using `LEO_VERSION` as the source tag for compatibility.
 
 ### snarkOS Image Tags vs Source Tags
 
@@ -135,6 +135,8 @@ snarkOS uses the same split. The `aleo-devnet` image component stays a normalize
 - `SNARKOS_SOURCE_TAG=testnet-v4.8.1` controls the upstream git clone and Rust toolchain inference (recorded via the `snarkos.source-tag` label).
 
 This is needed because `v4.8.1` is published from the pre-release tag `testnet-v4.8.1`. When `SNARKOS_SOURCE_TAG` is empty, the default `SNARKOS_VERSION=v4.8.1` derives `testnet-v4.8.1`; other snarkOS versions (e.g. `v4.7.3`) fall back to using `SNARKOS_VERSION` as the source tag.
+
+The current default pair is `v4.3.1-v4.8.1`. Leo `leo-lang-v4.3.1` resolves snarkVM through the `testnet-v4.8.0` line, and snarkOS `testnet-v4.8.1` pins the same snarkVM commit (`357899f8e85d6340bda5db8373b1cdffdf88a6d7`).
 
 ## 🔄 CI/CD Automation
 
@@ -195,10 +197,10 @@ The repository includes a script to create custom Aleo devnet images with pre-de
 ./build-publish-deployment-snapshot.sh --commit abc1234 --skip-push
 
 # Build with custom base image version
-./build-publish-deployment-snapshot.sh --version v4.3.0-v4.8.1 --skip-push
+./build-publish-deployment-snapshot.sh --version v4.3.1-v4.8.1 --skip-push
 
 # Build and push to registry (requires authentication)
-./build-publish-deployment-snapshot.sh --commit main --version v4.3.0-v4.8.1
+./build-publish-deployment-snapshot.sh --commit main --version v4.3.1-v4.8.1
 
 # Override required programs for verification (default: from required-programs.txt)
 ./build-publish-deployment-snapshot.sh --commit main --skip-push --required-programs "merkle_tree.aleo,custom.aleo"
@@ -237,19 +239,19 @@ The `--variant` flag allows you to add a suffix to version tags (not `latest`), 
 ```bash
 # Build Leo with Node.js 24
 NODE_VERSION=24 ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang --variant node24
-# Produces: leo-lang:v4.3.0-node24, leo-lang:latest
+# Produces: leo-lang:v4.3.1-node24, leo-lang:latest
 
 # Build with custom Rust version
 RUST_VERSION=1.88.0 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet --variant rust188
-# Produces: aleo-devnet:v4.3.0-v4.8.1-rust188, aleo-devnet:latest
+# Produces: aleo-devnet:v4.3.1-v4.8.1-rust188, aleo-devnet:latest
 ```
 
 ### Environment Variables
 
 | Variable | Applies to | Description |
 |---|---|---|
-| `LEO_VERSION` | both | Normalized Leo image/version tag (default: `v4.3.0`) |
-| `LEO_SOURCE_TAG` | leo-lang | Upstream Leo source tag used for clone/toolchain inference (default: `leo-lang-v4.3.0` when `LEO_VERSION=v4.3.0`) |
+| `LEO_VERSION` | both | Normalized Leo image/version tag (default: `v4.3.1`) |
+| `LEO_SOURCE_TAG` | leo-lang | Upstream Leo source tag used for clone/toolchain inference (default: `leo-lang-v4.3.1` when `LEO_VERSION=v4.3.1`) |
 | `SNARKOS_VERSION` | aleo-devnet | Normalized snarkOS image/version tag (default: `v4.8.1`) |
 | `SNARKOS_SOURCE_TAG` | aleo-devnet | Upstream snarkOS source tag used for clone/toolchain inference (default: `testnet-v4.8.1` when `SNARKOS_VERSION=v4.8.1`) |
 | `LEO_REPO` | both | Leo Git URL (default: ProvableHQ/leo) |
@@ -260,7 +262,7 @@ RUST_VERSION=1.88.0 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile
 
 ```bash
 # Example: multiple overrides
-LEO_VERSION="v4.3.0" LEO_SOURCE_TAG="leo-lang-v4.3.0" LEO_REPO="https://github.com/your-fork/leo" NODE_VERSION=18 \
+LEO_VERSION="v4.3.1" LEO_SOURCE_TAG="leo-lang-v4.3.1" LEO_REPO="https://github.com/your-fork/leo" NODE_VERSION=18 \
   ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 ```
 
@@ -291,7 +293,7 @@ echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 Add the appropriate user permissions:
 
 ```bash
-docker run --rm -v $(pwd):/app -w /app --user $(id -u):$(id -g) ghcr.io/sealance-io/leo-lang:v4.3.0 leo build
+docker run --rm -v $(pwd):/app -w /app --user $(id -u):$(id -g) ghcr.io/sealance-io/leo-lang:v4.3.1 leo build
 ```
 
 ## 📜 License

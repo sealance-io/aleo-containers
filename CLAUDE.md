@@ -27,7 +27,7 @@ snapshot Dockerfile (generated) → ghcr.io/sealance-io/aleo-devnet-custom:tag
 # Build aleo-devnet locally (requires leo-lang image)
 ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet --local-arch --no-push
 
-# Build deployment snapshot (default base v4.3.0-v4.8.1, consensus 16)
+# Build deployment snapshot (default base v4.3.1-v4.8.1, consensus 16)
 ./build-publish-deployment-snapshot.sh --commit main --skip-push
 
 # Lint (required before completing any task)
@@ -65,11 +65,11 @@ Two layers work together:
 1. **Build-time inference**: `infer_rust_version()` in the build script (and CI) fetches upstream `rust-toolchain.toml` to set the Docker base image tag. Leo inference uses `LEO_SOURCE_TAG`; snarkOS inference uses `SNARKOS_SOURCE_TAG`.
 2. **Dockerfile-level**: The actual compiler is determined by `rust-toolchain.toml` copied from the cloned repo. The base image just needs `rustup`.
 
-`RUST_VERSION` is auto-inferred — only override explicitly. Keep Rust per component: Leo `v4.3.0` uses Rust `1.96.0`; snarkOS `v4.8.1` (source tag `testnet-v4.8.1`) declares Rust `1.88`, normalized to Docker base tag `1.88.0`.
+`RUST_VERSION` is auto-inferred — only override explicitly. Keep Rust per component: Leo `v4.3.1` uses Rust `1.96.0`; snarkOS `v4.8.1` (source tag `testnet-v4.8.1`) declares Rust `1.88`, normalized to Docker base tag `1.88.0`.
 
 ### Leo Source Tags vs Image Tags
 
-Public Leo image tags are normalized (`LEO_VERSION=v4.3.0`), but upstream source uses `LEO_SOURCE_TAG=leo-lang-v4.3.0`. `LEO_VERSION` controls published image tags; `LEO_SOURCE_TAG` controls the Leo git clone and Rust inference. If unset, only the default `v4.3.0` derives `leo-lang-v4.3.0`; other versions fall back to `LEO_VERSION`.
+Public Leo image tags are normalized (`LEO_VERSION=v4.3.1`), but upstream source uses `LEO_SOURCE_TAG=leo-lang-v4.3.1`. `LEO_VERSION` controls published image tags; `LEO_SOURCE_TAG` controls the Leo git clone and Rust inference. If unset, known Leo releases with `leo-lang-*` upstream tags derive the matching source tag automatically; other versions fall back to `LEO_VERSION`.
 
 ### snarkOS Source Tags vs Image Tags
 

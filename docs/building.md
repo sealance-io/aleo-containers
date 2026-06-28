@@ -26,16 +26,18 @@
 
 ## Environment Variables
 
-`RUST_VERSION` is auto-inferred from the upstream `rust-toolchain.toml` — only set it to override. Leo and snarkOS keep separate Rust policies: Leo `v4.3.0` uses Rust `1.96.0`, while snarkOS `v4.8.1` (source tag `testnet-v4.8.1`) declares Rust `1.88` and Docker base tags normalize to `1.88.0`.
+`RUST_VERSION` is auto-inferred from the upstream `rust-toolchain.toml` — only set it to override. Leo and snarkOS keep separate Rust policies: Leo `v4.3.1` uses Rust `1.96.0`, while snarkOS `v4.8.1` (source tag `testnet-v4.8.1`) declares Rust `1.88` and Docker base tags normalize to `1.88.0`.
 
-Leo image tags and source tags are intentionally separate. `LEO_VERSION=v4.3.0` is the public image tag, while `LEO_SOURCE_TAG=leo-lang-v4.3.0` is the upstream git tag used for clone and Rust inference. If `LEO_SOURCE_TAG` is empty, only the default `LEO_VERSION=v4.3.0` derives `leo-lang-v4.3.0`; other versions fall back to `LEO_VERSION`.
+Leo image tags and source tags are intentionally separate. `LEO_VERSION=v4.3.1` is the public image tag, while `LEO_SOURCE_TAG=leo-lang-v4.3.1` is the upstream git tag used for clone and Rust inference. If `LEO_SOURCE_TAG` is empty, known Leo releases with `leo-lang-*` upstream tags derive the matching source tag automatically; other versions fall back to `LEO_VERSION`.
 
 snarkOS uses the same split: `SNARKOS_VERSION=v4.8.1` is the normalized image component, while `SNARKOS_SOURCE_TAG=testnet-v4.8.1` is the upstream git tag used for clone and Rust inference (needed because `v4.8.1` ships from the pre-release tag `testnet-v4.8.1`). If `SNARKOS_SOURCE_TAG` is empty, only the default `SNARKOS_VERSION=v4.8.1` derives `testnet-v4.8.1`; other versions (e.g. `v4.7.3`) fall back to `SNARKOS_VERSION`.
 
+The default `v4.3.1-v4.8.1` devnet pair is aligned on snarkVM commit `357899f8e85d6340bda5db8373b1cdffdf88a6d7` (Leo via `testnet-v4.8.0`, snarkOS via its pinned rev).
+
 | Variable | Applies to | Default | Description |
 |---|---|---|---|
-| `LEO_VERSION` | both | `v4.3.0` | Normalized Leo image/version tag |
-| `LEO_SOURCE_TAG` | leo-lang | `leo-lang-v4.3.0` | Upstream Leo source tag |
+| `LEO_VERSION` | both | `v4.3.1` | Normalized Leo image/version tag |
+| `LEO_SOURCE_TAG` | leo-lang | `leo-lang-v4.3.1` | Upstream Leo source tag |
 | `SNARKOS_VERSION` | aleo-devnet | `v4.8.1` | Normalized snarkOS image/version tag |
 | `SNARKOS_SOURCE_TAG` | aleo-devnet | `testnet-v4.8.1` | Upstream snarkOS source tag |
 | `LEO_REPO` | both | ProvableHQ/leo | Leo Git URL |
@@ -46,11 +48,11 @@ snarkOS uses the same split: `SNARKOS_VERSION=v4.8.1` is the normalized image co
 
 ```bash
 # Example: multiple overrides
-LEO_VERSION="v4.3.0" SNARKOS_VERSION="v4.8.1" \
+LEO_VERSION="v4.3.1" SNARKOS_VERSION="v4.8.1" \
   ./build-publish-image.sh --dockerfile aleo-devnet.Dockerfile --image-name aleo-devnet
 
 # Build from a fork
-LEO_REPO="https://github.com/your-fork/leo" LEO_SOURCE_TAG="leo-lang-v4.3.0" \
+LEO_REPO="https://github.com/your-fork/leo" LEO_SOURCE_TAG="leo-lang-v4.3.1" \
   ./build-publish-image.sh --dockerfile leo.Dockerfile --image-name leo-lang
 
 # Override Rust version (rarely needed)

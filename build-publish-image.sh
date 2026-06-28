@@ -136,6 +136,8 @@ resolve_leo_source_tag() {
     echo "leo-lang-v4.2.0"
   elif [[ "$leo_version" == "v4.3.0" ]]; then
     echo "leo-lang-v4.3.0"
+  elif [[ "$leo_version" == "v4.3.1" ]]; then
+    echo "leo-lang-v4.3.1"
   else
     echo "$leo_version"
   fi
@@ -235,7 +237,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Examples:"
       echo "  $0 --dockerfile leo.Dockerfile --image-name leo-lang --variant node24"
-      echo "  # Produces: leo-lang:v4.3.0-node24, leo-lang:latest"
+      echo "  # Produces: leo-lang:v4.3.1-node24, leo-lang:latest"
       exit 0
       ;;
     *)
@@ -247,14 +249,14 @@ done
 
 # Set project-specific version variables based on image name
 if [[ "$IMAGE_NAME" == "leo-lang" ]]; then
-  PROJECT_VERSION=${LEO_VERSION:-"v4.3.0"}
+  PROJECT_VERSION=${LEO_VERSION:-"v4.3.1"}
   LEO_SOURCE_TAG=$(resolve_leo_source_tag "$PROJECT_VERSION")
   PROJECT_VERSION_ARG="LEO_VERSION"
   PROJECT_REPO=${LEO_REPO:-"https://github.com/ProvableHQ/leo"}
   PROJECT_REPO_ARG="LEO_REPO"
 elif [[ "$IMAGE_NAME" == "aleo-devnet" ]]; then
   # Aleo-devnet uses both LEO and SNARKOS versions
-  LEO_VERSION=${LEO_VERSION:-"v4.3.0"}
+  LEO_VERSION=${LEO_VERSION:-"v4.3.1"}
   SNARKOS_VERSION=${SNARKOS_VERSION:-"v4.8.1"}
   SNARKOS_SOURCE_TAG=$(resolve_snarkos_source_tag "$SNARKOS_VERSION")
   # Image component stays normalized; SNARKOS_SOURCE_TAG drives clone/Rust inference.

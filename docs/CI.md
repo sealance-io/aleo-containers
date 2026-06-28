@@ -105,7 +105,7 @@ Each architecture builds and pushes by content digest, then a merge job creates 
 
 ```
 build-standard (amd64) ──→ push @sha256:abc...  ─┐
-                                                  ├─→ merge-standard ──→ tag: v4.3.0
+                                                  ├─→ merge-standard ──→ tag: v4.3.1
 build-standard (arm64) ──→ push @sha256:def...  ─┘
 ```
 
@@ -119,19 +119,19 @@ Trigger builds via GitHub Actions UI or the `gh` CLI:
 # Build a leo-lang image
 gh workflow run manual-build.yml \
   -f image_name=leo-lang \
-  -f leo_version=v4.3.0 \
-  -f leo_source_tag=leo-lang-v4.3.0
+  -f leo_version=v4.3.1 \
+  -f leo_source_tag=leo-lang-v4.3.1
 
 # Build an aleo-devnet image
 gh workflow run manual-build.yml \
   -f image_name=aleo-devnet \
-  -f leo_version=v4.3.0 \
+  -f leo_version=v4.3.1 \
   -f snarkos_version=v4.8.1
 
 # Build a deployment snapshot
 gh workflow run build-publish-deployment-snapshot.yml \
   -f git-ref=main \
-  -f aleo-devnet-version=v4.3.0-v4.8.1 \
+  -f aleo-devnet-version=v4.3.1-v4.8.1 \
   -f consensus-version=16
 ```
 
