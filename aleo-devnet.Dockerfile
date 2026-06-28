@@ -3,7 +3,7 @@
 # Run: docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/aleo/data aleo-devnet
 
 # Build arguments
-ARG LEO_VERSION=v4.3.0
+ARG LEO_VERSION=v4.3.1
 ARG SNARKOS_VERSION=v4.8.1
 # Upstream snarkOS source tag. The image component stays a normalized vX.Y.Z tag
 # (SNARKOS_VERSION), while the git clone / Rust inference may use a non-normalized
@@ -48,9 +48,9 @@ ARG SNARKOS_SOURCE_TAG
 
 # Install cargo-chef and build dependencies
 # libclang-dev provides libclang.so for clang-sys/bindgen, a transitive build
-# dependency introduced by snarkOS testnet-v4.8.1 (snarkVM v4.8.0 line). The
-# clang package alone ships only versioned runtime libs; clang-sys searches for
-# the unversioned libclang.so symlink that libclang-dev installs.
+# dependency introduced by snarkOS testnet-v4.8.1 (snarkVM testnet-v4.8.0 line).
+# The clang package alone ships only versioned runtime libs; clang-sys searches
+# for the unversioned libclang.so symlink that libclang-dev installs.
 RUN cargo install cargo-chef --locked \
     && apt-get update && apt-get install -y --no-install-recommends \
     build-essential \

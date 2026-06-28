@@ -68,7 +68,7 @@ on:
       leo_version:
         description: 'Leo version for aleo-devnet (if different from project_version)'
         required: false
-        default: 'v4.3.0'
+        default: 'v4.3.1'
         type: string
     secrets:
       registry_token:
@@ -116,6 +116,8 @@ jobs:
                 LEO_SOURCE_TAG="leo-lang-v4.2.0"
               elif [[ "${INPUT_PROJECT_VERSION}" == "v4.3.0" ]]; then
                 LEO_SOURCE_TAG="leo-lang-v4.3.0"
+              elif [[ "${INPUT_PROJECT_VERSION}" == "v4.3.1" ]]; then
+                LEO_SOURCE_TAG="leo-lang-v4.3.1"
               else
                 LEO_SOURCE_TAG="${INPUT_PROJECT_VERSION}"
               fi
@@ -271,7 +273,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            LEO_VERSION=${{ inputs.leo_version || 'v4.3.0' }}
+            LEO_VERSION=${{ inputs.leo_version || 'v4.3.1' }}
             SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.8.1' }}
             SNARKOS_SOURCE_TAG=${{ needs.determine-params.outputs.snarkos_source_tag }}
             RUST_VERSION=${{ needs.determine-params.outputs.rust_version }}

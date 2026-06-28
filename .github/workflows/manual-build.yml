@@ -11,10 +11,10 @@ on:
           - leo-lang
           - aleo-devnet
       leo_version:
-        description: 'Leo image version (e.g., v4.3.0)'
+        description: 'Leo image version (e.g., v4.3.1)'
         required: true
         type: string
-        default: 'v4.3.0'
+        default: 'v4.3.1'
       leo_source_tag:
         description: 'Leo upstream source tag (leo-lang only; blank derives default)'
         required: false
@@ -72,6 +72,8 @@ jobs:
                 LEO_SOURCE_TAG="leo-lang-v4.2.0"
               elif [[ "${LEO_VERSION}" == "v4.3.0" ]]; then
                 LEO_SOURCE_TAG="leo-lang-v4.3.0"
+              elif [[ "${LEO_VERSION}" == "v4.3.1" ]]; then
+                LEO_SOURCE_TAG="leo-lang-v4.3.1"
               else
                 LEO_SOURCE_TAG="${LEO_VERSION}"
               fi
@@ -93,7 +95,7 @@ jobs:
             fi
             {
               echo "dockerfile=aleo-devnet.Dockerfile"
-              # For aleo-devnet, project_version is combined: v4.3.0-v4.8.1
+              # For aleo-devnet, project_version is combined: v4.3.1-v4.8.1
               echo "project_version=${LEO_VERSION}-${SNARKOS_VERSION}"
               echo "leo_source_tag="
             } >> "$GITHUB_OUTPUT"

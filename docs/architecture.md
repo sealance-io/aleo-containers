@@ -34,19 +34,21 @@ Prover download and entrypoint script execution happen as `leo` user. The UID is
 
 Two layers of Rust version management work together:
 
-1. **Build-time inference** (`build-publish-image.sh` and CI): If `RUST_VERSION` is not explicitly set, `infer_rust_version()` fetches the upstream project's `rust-toolchain.toml` from GitHub and extracts the `channel` value. This sets the Docker **base image** tag (`rust:${RUST_VERSION}-slim-trixie`). Leo inference uses `LEO_SOURCE_TAG` (default `leo-lang-v4.3.0` for image tag `v4.3.0`), while snarkOS inference uses `SNARKOS_SOURCE_TAG` (default `testnet-v4.8.1` for image tag `v4.8.1`).
+1. **Build-time inference** (`build-publish-image.sh` and CI): If `RUST_VERSION` is not explicitly set, `infer_rust_version()` fetches the upstream project's `rust-toolchain.toml` from GitHub and extracts the `channel` value. This sets the Docker **base image** tag (`rust:${RUST_VERSION}-slim-trixie`). Leo inference uses `LEO_SOURCE_TAG` (default `leo-lang-v4.3.1` for image tag `v4.3.1`), while snarkOS inference uses `SNARKOS_SOURCE_TAG` (default `testnet-v4.8.1` for image tag `v4.8.1`).
 
 2. **Dockerfile-level deferral**: The actual Rust compiler used is determined by the upstream `rust-toolchain.toml` copied from the cloned repo during the planner stage. The base image just needs `rustup` to install the required toolchain.
 
-In practice, inference (step 1) tries to align the base image with what the Dockerfile will need (step 2), avoiding an unnecessary toolchain download. Set `RUST_VERSION` explicitly only to override. Keep Rust per component: Leo `v4.3.0` requires Rust `1.96.0`; snarkOS `v4.8.1` (source tag `testnet-v4.8.1`) still declares Rust `1.88`, normalized to Docker base tag `1.88.0`.
+In practice, inference (step 1) tries to align the base image with what the Dockerfile will need (step 2), avoiding an unnecessary toolchain download. Set `RUST_VERSION` explicitly only to override. Keep Rust per component: Leo `v4.3.1` requires Rust `1.96.0`; snarkOS `v4.8.1` (source tag `testnet-v4.8.1`) still declares Rust `1.88`, normalized to Docker base tag `1.88.0`.
 
 ## Leo Source Tags vs Image Tags
 
-Published image tags are normalized (`ghcr.io/sealance-io/leo-lang:v4.3.0`), but upstream Leo source uses `leo-lang-v4.3.0`. `LEO_VERSION` controls the image tag and metadata; `LEO_SOURCE_TAG` controls the git clone and Rust toolchain inference. If unset, `LEO_SOURCE_TAG` derives `leo-lang-v4.3.0` only for the default `LEO_VERSION=v4.3.0`; older/manual versions fall back to `LEO_VERSION`.
+Published image tags are normalized (`ghcr.io/sealance-io/leo-lang:v4.3.1`), but upstream Leo source uses `leo-lang-v4.3.1`. `LEO_VERSION` controls the image tag and metadata; `LEO_SOURCE_TAG` controls the git clone and Rust toolchain inference. If unset, known Leo releases with `leo-lang-*` upstream tags derive the matching source tag automatically; older/manual versions fall back to `LEO_VERSION`.
 
 ## snarkOS Source Tags vs Image Tags
 
 snarkOS uses the same split as Leo. The `aleo-devnet` image component stays a normalized `vX.Y.Z` tag (`SNARKOS_VERSION`, e.g. `v4.8.1`, used for image tags and the `snarkos.version` label), while `SNARKOS_SOURCE_TAG` controls the git clone and Rust toolchain inference. This matters when upstream ships a release under a non-`vX.Y.Z` tag: `v4.8.1` is published from the pre-release tag `testnet-v4.8.1`. If unset, `SNARKOS_SOURCE_TAG` derives `testnet-v4.8.1` only for `SNARKOS_VERSION=v4.8.1`; other versions (e.g. `v4.7.3`) fall back to using `SNARKOS_VERSION` unchanged. The resolved source tag is recorded on the image via the `snarkos.source-tag` label.
+
+For the current default devnet image, Leo `leo-lang-v4.3.1` and snarkOS `testnet-v4.8.1` both resolve snarkVM to commit `357899f8e85d6340bda5db8373b1cdffdf88a6d7`.
 
 ## Prover Downloads
 

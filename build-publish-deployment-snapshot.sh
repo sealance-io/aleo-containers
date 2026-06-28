@@ -39,15 +39,15 @@ usage() {
     echo ""
     echo "Options:"
     echo "  -c, --commit <sha/branch/tag>    Git commit SHA, branch, or tag to clone (default: main)"
-    echo "  -v, --version <version>          Version tag for aleo-devnet image (default: v4.3.0-v4.8.1)"
+    echo "  -v, --version <version>          Version tag for aleo-devnet image (default: v4.3.1-v4.8.1)"
     echo "  -t, --consensus-version <num>    Target consensus version for devnet (default: 16)"
     echo "  -p, --required-programs <list>   Comma-separated program IDs to verify (default: from required-programs.txt)"
     echo "  --skip-push                      Build images but skip pushing to registry (for testing)"
     echo "  -h, --help                       Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0                               # Use defaults (main branch, v4.3.0-v4.8.1)"
-    echo "  $0 -c develop -v v4.3.0-v4.8.1   # Use develop branch and v4.3.0-v4.8.1 image"
+    echo "  $0                               # Use defaults (main branch, v4.3.1-v4.8.1)"
+    echo "  $0 -c develop -v v4.3.1-v4.8.1   # Use develop branch and v4.3.1-v4.8.1 image"
     echo "  $0 --commit abc1234 --version latest"
     echo "  $0 --skip-push                   # Build locally without pushing"
     echo "  $0 -t 16                         # Use consensus version 16"
@@ -63,7 +63,7 @@ usage() {
 
 # Parse command line arguments
 GIT_REF="main"
-DEVNET_VERSION="v4.3.0-v4.8.1"
+DEVNET_VERSION="v4.3.1-v4.8.1"
 CONSENSUS_VERSION=16
 SKIP_PUSH=false
 REQUIRED_PROGRAMS=""
