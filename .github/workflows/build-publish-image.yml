@@ -53,7 +53,7 @@ on:
       snarkos_version:
         description: 'snarkOS version for aleo-devnet'
         required: false
-        default: 'v4.8.1'
+        default: 'v4.9.1'
         type: string
       snarkos_source_tag:
         description: 'Upstream snarkOS source tag for aleo-devnet builds (e.g., testnet-v4.8.1; blank derives default)'
@@ -68,7 +68,7 @@ on:
       leo_version:
         description: 'Leo version for aleo-devnet (if different from project_version)'
         required: false
-        default: 'v4.3.1'
+        default: 'v4.4.2'
         type: string
     secrets:
       registry_token:
@@ -118,6 +118,8 @@ jobs:
                 LEO_SOURCE_TAG="leo-lang-v4.3.0"
               elif [[ "${INPUT_PROJECT_VERSION}" == "v4.3.1" ]]; then
                 LEO_SOURCE_TAG="leo-lang-v4.3.1"
+              elif [[ "${INPUT_PROJECT_VERSION}" == "v4.4.2" ]]; then
+                LEO_SOURCE_TAG="leo-lang-v4.4.2"
               else
                 LEO_SOURCE_TAG="${INPUT_PROJECT_VERSION}"
               fi
@@ -172,7 +174,7 @@ jobs:
               TAG="${LEO_SOURCE_TAG}"
             elif [[ "${INPUT_IMAGE_NAME}" == "aleo-devnet" ]]; then
               REPO_PATH="ProvableHQ/snarkOS"
-              TAG="${SNARKOS_SOURCE_TAG:-${INPUT_SNARKOS_VERSION:-v4.8.1}}"
+              TAG="${SNARKOS_SOURCE_TAG:-${INPUT_SNARKOS_VERSION:-v4.9.1}}"
             fi
 
             CHANNEL=$(curl -sSf --max-time 10 \
@@ -273,8 +275,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            LEO_VERSION=${{ inputs.leo_version || 'v4.3.1' }}
-            SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.8.1' }}
+            LEO_VERSION=${{ inputs.leo_version || 'v4.4.2' }}
+            SNARKOS_VERSION=${{ inputs.snarkos_version || 'v4.9.1' }}
             SNARKOS_SOURCE_TAG=${{ needs.determine-params.outputs.snarkos_source_tag }}
             RUST_VERSION=${{ needs.determine-params.outputs.rust_version }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ needs.determine-params.outputs.registry_image }}

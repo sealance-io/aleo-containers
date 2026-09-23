@@ -47,11 +47,11 @@ This means snapshot images are fully configurable via `-e` env vars, just like t
 ## Snapshot Build Flow
 
 1. Clone `sealance-io/compliant-transfer-aleo` at specified commit (SSH with fallback)
-2. `npm ci --ignore-scripts` + `npm run postinstall` + `npm run build` + `npm run compile`
+2. `npm ci --ignore-scripts` + `npm run build --workspace=@sealance-io/policy-engine-aleo` + `npm run compile -- --network testnet` (LionDen compile; needs a host Leo CLI matching the target's `lionden.config.ts`)
 3. Start devnet container with volume mounted at `/aleo/data` (only captures ledger state, not runtime files)
-4. Generate `CONSENSUS_VERSION_HEIGHTS=0,1,2,...,N-1` to accelerate reaching target consensus version (default target: `16`, default heights: `0..15`)
+4. Generate `CONSENSUS_VERSION_HEIGHTS=0,1,2,...,N-1` to accelerate reaching target consensus version (default target: `19`, default heights: `0..18`)
 5. Poll `http://localhost:3030/testnet/consensus_version` until >= target (max 100 retries, 5s apart)
-6. Deploy programs via `npm run deploy:devnet`
+6. Deploy programs via `TEST_MODE=devnet npx lionden recipe --file recipes/setup.ts --network devnet` (`TEST_MODE=devnet` primes SDK consensus heights for the `http` devnet network)
 7. **Pre-shutdown verification**: Query REST API for each program in `required-programs.txt` (retries up to 10x)
 8. Stop container, extract only `/aleo/data` to `./devnet/data/` (script uses alpine cp from volume; CI uses `docker cp`)
 9. Build multi-arch image (version-tag only) from generated Dockerfile
@@ -65,7 +65,7 @@ Three-layer verification prevents publishing snapshots with missing programs:
 | Layer | When | What |
 |---|---|---|
 | **Volume narrowing** | Container run | Mount only `/aleo/data`, not `/aleo` — excludes `devnet-entrypoint.sh` and `snarkos` from capture |
-| **Pre-shutdown check** | After `deploy:devnet`, before stop | REST API query per program with retries |
+| **Pre-shutdown check** | After the deploy recipe, before stop | REST API query per program with retries |
 | **Post-build E2E** | After image build, before latest tag | Boot image per-platform, verify programs are queryable |
 
 **`required-programs.txt`** (repo root): One program ID per line (`#` comments and blank lines ignored). Both the script and CI workflow read this file as the default. Override with `--required-programs` (script) or `required-programs` input (CI).

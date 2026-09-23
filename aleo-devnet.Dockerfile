@@ -3,12 +3,12 @@
 # Run: docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/aleo/data aleo-devnet
 
 # Build arguments
-ARG LEO_VERSION=v4.3.1
-ARG SNARKOS_VERSION=v4.8.1
+ARG LEO_VERSION=v4.4.2
+ARG SNARKOS_VERSION=v4.9.1
 # Upstream snarkOS source tag. The image component stays a normalized vX.Y.Z tag
 # (SNARKOS_VERSION), while the git clone / Rust inference may use a non-normalized
 # upstream tag (e.g. a pre-release). Mirrors the Leo LEO_SOURCE_TAG split.
-ARG SNARKOS_SOURCE_TAG=testnet-v4.8.1
+ARG SNARKOS_SOURCE_TAG=v4.9.1
 # Used to pin Rust base images.
 ARG RUST_VERSION=1.88.0
 
