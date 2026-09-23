@@ -45,14 +45,6 @@ snapshot Dockerfile (generated) → ghcr.io/sealance-io/aleo-devnet-custom:tag
 ./build-publish-deployment-snapshot.sh --commit main --version v4.4.2-v4.9.1 --consensus-version 16
 ```
 
-### Run Containers
-
-```bash
-docker run --rm ghcr.io/sealance-io/leo-lang:v4.4.2 leo --help
-docker run -it --rm -p 3030:3030 -p 4130:4130 -v $(pwd)/data:/aleo/data ghcr.io/sealance-io/aleo-devnet:v4.4.2-v4.9.1
-curl http://localhost:3030/testnet/latest/height
-```
-
 ### Lint & Validate
 
 ```bash
