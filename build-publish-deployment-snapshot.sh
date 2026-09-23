@@ -348,6 +348,22 @@ if ! command -v leo &> /dev/null; then
 fi
 print_step "Using Leo CLI: $(leo --version)"
 
+# Fail fast if the host Leo CLI won't satisfy the target's LionDen leoVersion
+# (LionDen rejects major/minor mismatches at compile time).
+HOST_LEO_VERSION=$(leo --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
+TARGET_LEO_VERSION=$(sed -n 's/^[[:space:]]*leoVersion:[[:space:]]*["'\'']\([0-9][0-9.]*\)["'\''].*/\1/p' lionden.config.ts 2>/dev/null | head -n1 || true)
+if [[ -z "${TARGET_LEO_VERSION}" || -z "${HOST_LEO_VERSION}" ]]; then
+    print_warning "Could not compare Leo versions (host: ${HOST_LEO_VERSION:-unknown}, lionden.config.ts: ${TARGET_LEO_VERSION:-unknown}). Proceeding."
+elif [[ "${HOST_LEO_VERSION%.*}" != "${TARGET_LEO_VERSION%.*}" ]]; then
+    print_error "Host Leo v${HOST_LEO_VERSION} is incompatible with the target's lionden.config.ts leoVersion ${TARGET_LEO_VERSION}."
+    print_error "Use a --commit whose leoVersion matches the base image's Leo, or install a matching Leo CLI."
+    exit 1
+elif [[ "${HOST_LEO_VERSION}" != "${TARGET_LEO_VERSION}" ]]; then
+    print_warning "Host Leo v${HOST_LEO_VERSION} differs from lionden.config.ts leoVersion ${TARGET_LEO_VERSION} (patch only)."
+else
+    print_success "Host Leo v${HOST_LEO_VERSION} matches lionden.config.ts leoVersion."
+fi
+
 # Step 2: Pull aleo-devnet image
 print_step "Pulling image ${DEVNET_IMAGE}..."
 ${CONTAINER_TOOL} pull "${DEVNET_IMAGE}"

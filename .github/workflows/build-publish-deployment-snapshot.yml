@@ -191,6 +191,25 @@ jobs:
             cd ..
           }
 
+      - name: Check Leo CLI matches target LionDen config
+        working-directory: compliant-transfer-aleo-build
+        run: |
+          set -euo pipefail
+          # Fail fast if the installed Leo CLI won't satisfy the target's LionDen
+          # leoVersion (LionDen rejects major/minor mismatches at compile time).
+          HOST_LEO_VERSION=$(leo --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
+          TARGET_LEO_VERSION=$(sed -n "s/^[[:space:]]*leoVersion:[[:space:]]*[\"']\([0-9][0-9.]*\)[\"'].*/\1/p" lionden.config.ts 2>/dev/null | head -n1 || true)
+          if [[ -z "${TARGET_LEO_VERSION}" || -z "${HOST_LEO_VERSION}" ]]; then
+            echo "::warning::Could not compare Leo versions (host: ${HOST_LEO_VERSION:-unknown}, lionden.config.ts: ${TARGET_LEO_VERSION:-unknown}). Proceeding."
+          elif [[ "${HOST_LEO_VERSION%.*}" != "${TARGET_LEO_VERSION%.*}" ]]; then
+            echo "::error::Host Leo v${HOST_LEO_VERSION} is incompatible with the target's lionden.config.ts leoVersion ${TARGET_LEO_VERSION}. Use a git-ref whose leoVersion matches the aleo-devnet-version Leo component."
+            exit 1
+          elif [[ "${HOST_LEO_VERSION}" != "${TARGET_LEO_VERSION}" ]]; then
+            echo "::warning::Host Leo v${HOST_LEO_VERSION} differs from lionden.config.ts leoVersion ${TARGET_LEO_VERSION} (patch only)."
+          else
+            echo "[SUCCESS] Host Leo v${HOST_LEO_VERSION} matches lionden.config.ts leoVersion."
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:

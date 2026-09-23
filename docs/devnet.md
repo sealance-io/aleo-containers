@@ -47,7 +47,7 @@ This means snapshot images are fully configurable via `-e` env vars, just like t
 ## Snapshot Build Flow
 
 1. Clone `sealance-io/compliant-transfer-aleo` at specified commit (SSH with fallback)
-2. `npm ci --ignore-scripts` + `npm run build --workspace=@sealance-io/policy-engine-aleo` + `npm run compile -- --network testnet` (LionDen compile; needs a host Leo CLI matching the target's `lionden.config.ts`)
+2. `npm ci --ignore-scripts` + `npm run build --workspace=@sealance-io/policy-engine-aleo` + `npm run compile -- --network testnet` (LionDen compile; a preflight fails fast unless the host Leo CLI's major.minor matches the target's `lionden.config.ts` `leoVersion`)
 3. Start devnet container with volume mounted at `/aleo/data` (only captures ledger state, not runtime files)
 4. Generate `CONSENSUS_VERSION_HEIGHTS=0,1,2,...,N-1` to accelerate reaching target consensus version (default target: `19`, default heights: `0..18`)
 5. Poll `http://localhost:3030/testnet/consensus_version` until >= target (max 100 retries, 5s apart)
