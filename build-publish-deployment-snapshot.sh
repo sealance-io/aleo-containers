@@ -393,6 +393,8 @@ fi
 print_success "@sealance-io/policy-engine-aleo installed."
 
 print_step "Compiling project (lionden compile)..."
+# Leo v4.4+ fails with EPAK0375062 if ~/.aleo is missing
+mkdir -p "${HOME}/.aleo"
 if ! npm run compile -- --network testnet; then
     print_error "Compilation failed. Check that the Leo CLI matches lionden.config.ts."
     exit 1

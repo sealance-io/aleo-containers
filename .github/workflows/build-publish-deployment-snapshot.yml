@@ -239,6 +239,9 @@ jobs:
           # build @sealance-io/policy-engine-aleo
           npm run build --workspace=@sealance-io/policy-engine-aleo
 
+          # Leo v4.4+ fails with EPAK0375062 if ~/.aleo is missing (fresh runners lack it)
+          mkdir -p "${HOME}/.aleo"
+
           # Compile leo programs (lionden, using the Leo CLI installed above)
           npm run compile -- --network testnet
 
