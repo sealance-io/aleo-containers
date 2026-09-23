@@ -105,7 +105,7 @@ Each architecture builds and pushes by content digest, then a merge job creates 
 
 ```
 build-standard (amd64) ──→ push @sha256:abc...  ─┐
-                                                  ├─→ merge-standard ──→ tag: v4.3.1
+                                                  ├─→ merge-standard ──→ tag: v4.4.2
 build-standard (arm64) ──→ push @sha256:def...  ─┘
 ```
 
@@ -119,19 +119,19 @@ Trigger builds via GitHub Actions UI or the `gh` CLI:
 # Build a leo-lang image
 gh workflow run manual-build.yml \
   -f image_name=leo-lang \
-  -f leo_version=v4.3.1 \
-  -f leo_source_tag=leo-lang-v4.3.1
+  -f leo_version=v4.4.2 \
+  -f leo_source_tag=leo-lang-v4.4.2
 
 # Build an aleo-devnet image
 gh workflow run manual-build.yml \
   -f image_name=aleo-devnet \
-  -f leo_version=v4.3.1 \
-  -f snarkos_version=v4.8.1
+  -f leo_version=v4.4.2 \
+  -f snarkos_version=v4.9.1
 
 # Build a deployment snapshot
 gh workflow run build-publish-deployment-snapshot.yml \
   -f git-ref=main \
-  -f aleo-devnet-version=v4.3.1-v4.8.1 \
+  -f aleo-devnet-version=v4.4.2-v4.9.1 \
   -f consensus-version=16
 ```
 
@@ -142,7 +142,7 @@ gh workflow run build-publish-deployment-snapshot.yml \
 1. The workflow clones the compliant-transfer-aleo repository at the specified ref
 2. Resolves required programs from `required-programs.txt` (or the `required-programs` input override). Publish flows fail if the list is empty.
 3. Starts an Aleo devnet container with volume mounted at `/aleo/data` (only ledger state)
-4. Waits for the devnet consensus version to reach the target (default: >= 16, with generated heights `0..15`)
+4. Waits for the devnet consensus version to reach the target (default: >= 19, with generated heights `0..18`)
 5. Installs dependencies and builds the programs
 6. Deploys the programs to the local devnet
 7. **Pre-shutdown verification**: Queries the REST API for each required program (retries up to 10x)

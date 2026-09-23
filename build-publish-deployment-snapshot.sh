@@ -39,18 +39,18 @@ usage() {
     echo ""
     echo "Options:"
     echo "  -c, --commit <sha/branch/tag>    Git commit SHA, branch, or tag to clone (default: main)"
-    echo "  -v, --version <version>          Version tag for aleo-devnet image (default: v4.3.1-v4.8.1)"
-    echo "  -t, --consensus-version <num>    Target consensus version for devnet (default: 16)"
+    echo "  -v, --version <version>          Version tag for aleo-devnet image (default: v4.4.2-v4.9.1)"
+    echo "  -t, --consensus-version <num>    Target consensus version for devnet (default: 19)"
     echo "  -p, --required-programs <list>   Comma-separated program IDs to verify (default: from required-programs.txt)"
     echo "  --skip-push                      Build images but skip pushing to registry (for testing)"
     echo "  -h, --help                       Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0                               # Use defaults (main branch, v4.3.1-v4.8.1)"
-    echo "  $0 -c develop -v v4.3.1-v4.8.1   # Use develop branch and v4.3.1-v4.8.1 image"
+    echo "  $0                               # Use defaults (main branch, v4.4.2-v4.9.1)"
+    echo "  $0 -c develop -v v4.4.2-v4.9.1   # Use develop branch and v4.4.2-v4.9.1 image"
     echo "  $0 --commit abc1234 --version latest"
     echo "  $0 --skip-push                   # Build locally without pushing"
-    echo "  $0 -t 16                         # Use consensus version 16"
+    echo "  $0 -t 19                         # Use consensus version 19"
     echo ""
     echo "Notes:"
     echo "  - Requires either podman or docker installed and running"
@@ -63,8 +63,8 @@ usage() {
 
 # Parse command line arguments
 GIT_REF="main"
-DEVNET_VERSION="v4.3.1-v4.8.1"
-CONSENSUS_VERSION=16
+DEVNET_VERSION="v4.4.2-v4.9.1"
+CONSENSUS_VERSION=19
 SKIP_PUSH=false
 REQUIRED_PROGRAMS=""
 
@@ -341,16 +341,12 @@ fi
 # Display npm version for debugging
 print_step "Using npm version: $(npm --version)"
 
-print_step "Installing dokojs CLI from npmjs registry..."
-if ! npm install -g @sealance-io/dokojs@1.0.8 --registry=https://registry.npmjs.org/ --ignore-scripts; then
-    print_error "Failed to install @sealance-io/dokojs@1.0.8 from npmjs registry."
+# LionDen compiles through the host Leo CLI (version pinned in lionden.config.ts)
+if ! command -v leo &> /dev/null; then
+    print_error "leo is not installed. Install a Leo CLI matching the target's lionden.config.ts."
     exit 1
 fi
-if ! command -v dokojs &> /dev/null; then
-    print_error "dokojs command not found after installation."
-    exit 1
-fi
-print_success "dokojs installed: $(dokojs --version)"
+print_step "Using Leo CLI: $(leo --version)"
 
 # Step 2: Pull aleo-devnet image
 print_step "Pulling image ${DEVNET_IMAGE}..."
@@ -373,11 +369,6 @@ if ! npm ci --ignore-scripts; then
     exit 1
 fi
 print_success "Dependencies installed."
-print_step "Running post-install scripts..."
-if ! npm run postinstall; then
-    print_error "Failed to execute post-install script."
-    exit 1
-fi
 print_step "Building @sealance-io/policy-engine-aleo sdk..."
 if ! npm run build --workspace=@sealance-io/policy-engine-aleo; then
     print_error "Failed to build @sealance-io/policy-engine-aleo."
@@ -385,9 +376,9 @@ if ! npm run build --workspace=@sealance-io/policy-engine-aleo; then
 fi
 print_success "@sealance-io/policy-engine-aleo installed."
 
-print_step "Compiling project (rimraf artifacts && dokojs compile)..."
-if ! TESTNET_ENDPOINT="https://api.explorer.provable.com/v1" npm run compile; then
-    print_error "Compilation failed. Check if dokojs is properly installed."
+print_step "Compiling project (lionden compile)..."
+if ! npm run compile -- --network testnet; then
+    print_error "Compilation failed. Check that the Leo CLI matches lionden.config.ts."
     exit 1
 fi
 print_success "Project compiled."
@@ -584,7 +575,9 @@ if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
 fi
 
 print_step "Running deployment to devnet..."
-if ! npm run deploy:devnet; then
+# TEST_MODE=devnet primes SDK consensus heights for the http devnet network;
+# DEVNET_EXTERNAL keeps LionDen from managing its own devnet container.
+if ! DEVNET_EXTERNAL=true TEST_MODE=devnet npx lionden recipe --file recipes/setup.ts --network devnet; then
     print_error "Deployment failed. Check the container logs for details."
     exit 1
 fi

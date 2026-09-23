@@ -11,10 +11,10 @@ on:
           - leo-lang
           - aleo-devnet
       leo_version:
-        description: 'Leo image version (e.g., v4.3.1)'
+        description: 'Leo image version (e.g., v4.4.2)'
         required: true
         type: string
-        default: 'v4.3.1'
+        default: 'v4.4.2'
       leo_source_tag:
         description: 'Leo upstream source tag (leo-lang only; blank derives default)'
         required: false
@@ -23,7 +23,7 @@ on:
       snarkos_version:
         description: 'snarkOS version (aleo-devnet only)'
         type: string
-        default: 'v4.8.1'
+        default: 'v4.9.1'
         required: false
       snarkos_source_tag:
         description: 'snarkOS upstream source tag (aleo-devnet only; blank derives default)'
@@ -61,7 +61,7 @@ jobs:
           LEO_VERSION="${INPUT_LEO_VERSION}"
           LEO_SOURCE_TAG="${INPUT_LEO_SOURCE_TAG}"
           SNARKOS_VERSION="${INPUT_SNARKOS_VERSION}"
-          SNARKOS_VERSION="${SNARKOS_VERSION:-v4.8.1}"
+          SNARKOS_VERSION="${SNARKOS_VERSION:-v4.9.1}"
           SNARKOS_SOURCE_TAG="${INPUT_SNARKOS_SOURCE_TAG}"
 
           if [[ "${INPUT_IMAGE_NAME}" == "leo-lang" ]]; then
@@ -74,6 +74,8 @@ jobs:
                 LEO_SOURCE_TAG="leo-lang-v4.3.0"
               elif [[ "${LEO_VERSION}" == "v4.3.1" ]]; then
                 LEO_SOURCE_TAG="leo-lang-v4.3.1"
+              elif [[ "${LEO_VERSION}" == "v4.4.2" ]]; then
+                LEO_SOURCE_TAG="leo-lang-v4.4.2"
               else
                 LEO_SOURCE_TAG="${LEO_VERSION}"
               fi
@@ -95,7 +97,7 @@ jobs:
             fi
             {
               echo "dockerfile=aleo-devnet.Dockerfile"
-              # For aleo-devnet, project_version is combined: v4.3.1-v4.8.1
+              # For aleo-devnet, project_version is combined: v4.4.2-v4.9.1
               echo "project_version=${LEO_VERSION}-${SNARKOS_VERSION}"
               echo "leo_source_tag="
             } >> "$GITHUB_OUTPUT"
