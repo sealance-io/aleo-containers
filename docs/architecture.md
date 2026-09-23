@@ -12,6 +12,8 @@ All Dockerfiles use multi-stage builds with [cargo-chef](https://github.com/Luke
 | `builder` | Cooks dependencies (cached layer), then compiles Leo source |
 | `leo` | Minimal runtime with Node.js, non-root `leo` user (UID 1001) |
 
+The `builder` stage auto-detects Leo's workspace layout: Leo v4+ is a workspace with `crates/leo/Cargo.toml` and builds with `cargo build --release --locked -p leo-lang`; Leo v3 is a single-crate root and builds with `cargo build --release --locked`. Both produce the same `target/release/leo` binary.
+
 ### aleo-devnet.Dockerfile
 
 | Stage | Purpose |
