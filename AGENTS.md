@@ -61,6 +61,12 @@ hadolint leo.Dockerfile
 hadolint aleo-devnet.Dockerfile
 ```
 
+Validation is required before considering a task complete:
+
+- Modified shell scripts → `shellcheck --severity=warning`
+- Modified Dockerfiles → `hadolint`
+- Modified GitHub Actions workflows → verify SHA-pinned action references include a trailing version comment (e.g., `# v6.0.2`)
+
 ## Shell Script Conventions
 
 All scripts use `set -euo pipefail` with `IFS=$'\n\t'` and are validated with [shellcheck](https://www.shellcheck.net/). Both build scripts support `--help` for full usage details.
