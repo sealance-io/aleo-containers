@@ -577,11 +577,12 @@ jobs:
               "$IMAGE"
 
             # Wait for REST API readiness
-            TIMEOUT=360
+            # Snapshot nodes synthesize circuits before serving REST (~6 min measured locally)
+            TIMEOUT=900
             ELAPSED=0
             echo "[BUILD] Waiting up to ${TIMEOUT}s for REST API on port ${PORT}..."
             while [[ $ELAPSED -lt $TIMEOUT ]]; do
-              if curl -s "http://localhost:${PORT}/testnet/latest/height" &>/dev/null; then
+              if curl -sf "http://localhost:${PORT}/testnet/block/height/latest" &>/dev/null; then
                 echo "[SUCCESS] REST API is ready (after ${ELAPSED}s)."
                 break
               fi
