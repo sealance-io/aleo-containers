@@ -17,7 +17,8 @@
 - Version format is strictly `vX.Y.Z-vA.B.C` (Leo-snarkOS)
 - Minimum versions: Leo >= v3.5.0, snarkOS >= v4.5.3 (required for non-root `leo` user and `/aleo/data` layout)
 - Volume mount narrowed to `/aleo/data` — only ledger state is captured
-- Flags: `--commit`, `--version`, `--consensus-version`, `--required-programs`, `--skip-push`
+- Flags: `--commit`, `--version`, `--consensus-version`, `--required-programs`, `--skip-push`, `--local-arch`
+- `--local-arch` (requires `--skip-push`) builds only the host platform; with podman this skips the default amd64+arm64 builds and manifest list
 - Latest tag is a retag of the verified version-tag digest, not a second build
 
 ```bash

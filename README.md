@@ -191,6 +191,9 @@ The repository includes a script to create custom Aleo devnet images with pre-de
 # Build deployment snapshot from main branch (without pushing)
 ./build-publish-deployment-snapshot.sh --commit main --skip-push
 
+# Local dry-run for the host architecture only (no cross-arch build, no push)
+./build-publish-deployment-snapshot.sh --commit main --skip-push --local-arch
+
 # Build from specific branch/tag/commit
 ./build-publish-deployment-snapshot.sh --commit develop --skip-push
 ./build-publish-deployment-snapshot.sh --commit v1.0.0 --skip-push
