@@ -43,6 +43,7 @@ usage() {
     echo "  -t, --consensus-version <num>    Target consensus version for devnet (default: 19)"
     echo "  -p, --required-programs <list>   Comma-separated program IDs to verify (default: from required-programs.txt)"
     echo "  --skip-push                      Build images but skip pushing to registry (for testing)"
+    echo "  --local-arch                     Build only for the host architecture (requires --skip-push)"
     echo "  -h, --help                       Show this help message"
     echo ""
     echo "Examples:"
@@ -50,6 +51,7 @@ usage() {
     echo "  $0 -c develop -v v4.4.2-v4.9.1   # Use develop branch and v4.4.2-v4.9.1 image"
     echo "  $0 --commit abc1234 --version latest"
     echo "  $0 --skip-push                   # Build locally without pushing"
+    echo "  $0 --skip-push --local-arch      # Build locally for the host architecture only"
     echo "  $0 -t 19                         # Use consensus version 19"
     echo ""
     echo "Notes:"
@@ -66,6 +68,7 @@ GIT_REF="main"
 DEVNET_VERSION="v4.4.2-v4.9.1"
 CONSENSUS_VERSION=19
 SKIP_PUSH=false
+LOCAL_ARCH=false
 REQUIRED_PROGRAMS=""
 
 while [[ $# -gt 0 ]]; do
@@ -90,6 +93,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_PUSH=true
             shift
             ;;
+        --local-arch)
+            LOCAL_ARCH=true
+            shift
+            ;;
         -h|--help)
             usage
             ;;
@@ -99,6 +106,12 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Published snapshots must be multi-arch; single-arch builds are local-only
+if [[ "$LOCAL_ARCH" == "true" && "$SKIP_PUSH" == "false" ]]; then
+    print_error "--local-arch requires --skip-push (published snapshots must be multi-arch)."
+    exit 1
+fi
 
 # Returns 0 (true) if $1 >= $2, 1 (false) otherwise.
 # Both arguments must be in X.Y.Z format.
@@ -168,6 +181,7 @@ echo "  Aleo Devnet version: ${DEVNET_VERSION}"
 echo "  Consensus version: ${CONSENSUS_VERSION}"
 echo "  Clone method: SSH"
 echo "  Skip push: ${SKIP_PUSH}"
+echo "  Local arch only: ${LOCAL_ARCH}"
 echo "  Required programs: ${REQUIRED_PROGRAMS:-<none>}"
 echo "  Dockerfile: Will be generated dynamically"
 echo ""
@@ -750,7 +764,27 @@ echo ""
 build_multiplatform() {
     local tag=$1
     
-    if [[ "$CONTAINER_TOOL" == "podman" ]]; then
+    if [[ "$CONTAINER_TOOL" == "podman" && "$LOCAL_ARCH" == "true" ]]; then
+        # Podman local-arch: single native image under the plain tag (no manifest list)
+        local host_platform
+        case "$(uname -m)" in
+            x86_64) host_platform="linux/amd64" ;;
+            arm64|aarch64) host_platform="linux/arm64" ;;
+            *) print_error "Unsupported platform: $(uname -m)"; exit 1 ;;
+        esac
+
+        podman manifest rm "${IMAGE_NAME}:${tag}" 2>/dev/null || true
+        print_step "Building container image for ${host_platform} (--local-arch)..."
+        podman build \
+          --platform "${host_platform}" \
+          --build-arg GIT_COMMIT="${GIT_COMMIT}" \
+          --build-arg BUILD_DATE="${BUILD_DATE}" \
+          --build-arg REPO_URL="${REPO_URL_HTTPS}" \
+          --tag "${IMAGE_NAME}:${tag}" \
+          .
+        print_success "Image for ${tag} built locally (${host_platform})."
+
+    elif [[ "$CONTAINER_TOOL" == "podman" ]]; then
         # Podman approach: build separately and create manifest
         
         # Clean up any existing manifest lists that might conflict
@@ -886,7 +920,11 @@ if [[ -n "${REQUIRED_PROGRAMS}" ]]; then
 fi
 
 # Retag version-tag as latest (same digest, no rebuild)
-if [[ "$CONTAINER_TOOL" == "podman" ]]; then
+if [[ "$CONTAINER_TOOL" == "podman" && "$LOCAL_ARCH" == "true" ]]; then
+    podman manifest rm "${IMAGE_NAME}:${LATEST_TAG}" 2>/dev/null || true
+    podman tag "${IMAGE_NAME}:${VERSION_TAG}" "${IMAGE_NAME}:${LATEST_TAG}"
+    print_success "Latest tag created locally."
+elif [[ "$CONTAINER_TOOL" == "podman" ]]; then
     podman tag "${IMAGE_NAME}:${VERSION_TAG}-amd64" "${IMAGE_NAME}:${LATEST_TAG}-amd64"
     podman tag "${IMAGE_NAME}:${VERSION_TAG}-arm64" "${IMAGE_NAME}:${LATEST_TAG}-arm64"
     podman manifest rm "${IMAGE_NAME}:${LATEST_TAG}" 2>/dev/null || true
@@ -933,7 +971,10 @@ if [[ "$SKIP_PUSH" == "false" ]]; then
     echo "  📦 ${IMAGE_NAME}:${LATEST_TAG} (multi-arch)"
 else
     echo "Your custom container images were built locally:"
-    if [[ "$CONTAINER_TOOL" == "docker" ]]; then
+    if [[ "$LOCAL_ARCH" == "true" ]]; then
+        echo "  📦 ${IMAGE_NAME}:${VERSION_TAG} (current platform only)"
+        echo "  📦 ${IMAGE_NAME}:${LATEST_TAG} (current platform only)"
+    elif [[ "$CONTAINER_TOOL" == "docker" ]]; then
         echo "  📦 ${IMAGE_NAME}:${VERSION_TAG} (current platform only)"
         echo "  📦 ${IMAGE_NAME}:${LATEST_TAG} (current platform only)"
         echo ""
@@ -947,7 +988,7 @@ else
     echo "Note: Images were NOT pushed to registry (--skip-push was used)"
 fi
 echo ""
-if [[ "$SKIP_PUSH" == "false" ]] || [[ "$CONTAINER_TOOL" == "podman" ]]; then
+if [[ "$SKIP_PUSH" == "false" ]] || [[ "$CONTAINER_TOOL" == "podman" && "$LOCAL_ARCH" == "false" ]]; then
     echo "Each multi-arch image includes:"
     echo "  🏗️  linux/amd64 (x86_64)"
     echo "  🏗️  linux/arm64 (Apple Silicon, ARM servers)"
