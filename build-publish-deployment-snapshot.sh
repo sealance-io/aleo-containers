@@ -317,33 +317,39 @@ cd "${CLONE_DIR}"
 
 cp ".env.example" ".env"
 
-# Check and use nvm if available and .nvmrc exists
-# Note: nvm is typically a shell function, not a command, so we check differently
+# Best effort: switch to the .nvmrc Node.js version via nvm when possible,
+# otherwise continue with the system Node.js (npm is re-checked below).
+# nvm.sh is not strict-mode safe (unset vars, non-zero returns, relies on the
+# default IFS), so relax -e/-u and restore IFS around it.
 if [ -f ".nvmrc" ]; then
-    print_step "Found .nvmrc file, checking for nvm..."
-    
-    # Try to load nvm from common locations
-    if [ -s "$HOME/.nvm/nvm.sh" ]; then
-        print_step "Loading nvm from ~/.nvm/nvm.sh..."
-        # shellcheck disable=SC1091
-        source "$HOME/.nvm/nvm.sh"
-    elif [ -s "/usr/local/opt/nvm/nvm.sh" ]; then
-        print_step "Loading nvm from /usr/local/opt/nvm/nvm.sh..."
-        # shellcheck disable=SC1091
-        source "/usr/local/opt/nvm/nvm.sh"
+    print_step "Found .nvmrc file, trying nvm (best effort)..."
+    NVM_SH=""
+    for candidate in "${NVM_DIR:-$HOME/.nvm}/nvm.sh" "/usr/local/opt/nvm/nvm.sh"; do
+        if [ -s "$candidate" ]; then
+            NVM_SH="$candidate"
+            break
+        fi
+    done
+
+    NVM_SWITCHED=false
+    if [ -n "$NVM_SH" ]; then
+        SAVED_IFS="$IFS"
+        IFS=$' \t\n'
+        set +eu
+        # shellcheck disable=SC1090
+        source "$NVM_SH" && type nvm &> /dev/null && nvm use && NVM_SWITCHED=true
+        set -eu
+        IFS="$SAVED_IFS"
     fi
-    
-    # Check if nvm is now available as a function
-    if type nvm &> /dev/null; then
-        print_step "Switching to Node.js version specified in .nvmrc..."
-        nvm use
+
+    if [[ "$NVM_SWITCHED" == "true" ]]; then
         print_success "Node.js version switched to: $(node --version)"
     else
-        print_warning ".nvmrc file found but nvm could not be loaded."
-        print_warning "Using system Node.js version: $(node --version)"
+        print_warning "Could not switch Node.js via nvm (nvm not found or .nvmrc version not installed)."
+        print_warning "Using system Node.js version: $(node --version 2>/dev/null || echo unknown)"
     fi
 else
-    print_step "No .nvmrc file found, using system Node.js version: $(node --version)"
+    print_step "No .nvmrc file found, using system Node.js version: $(node --version 2>/dev/null || echo unknown)"
 fi
 
 # Verify npm is still available after potential version switch
