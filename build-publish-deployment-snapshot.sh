@@ -43,13 +43,18 @@ usage() {
     echo "  -t, --consensus-version <num>    Target consensus version for devnet (default: 19)"
     echo "  -p, --required-programs <list>   Comma-separated program IDs to verify (default: from required-programs.txt)"
     echo "  --skip-push                      Build images but skip pushing to registry (for testing)"
+    echo "  --local-arch                     Build only for the host architecture (requires --skip-push)"
     echo "  -h, --help                       Show this help message"
+    echo ""
+    echo "Environment:"
+    echo "  VERIFY_TIMEOUT                   Seconds to wait for the snapshot image's REST API during E2E verification (default: 900)"
     echo ""
     echo "Examples:"
     echo "  $0                               # Use defaults (main branch, v4.4.2-v4.9.1)"
     echo "  $0 -c develop -v v4.4.2-v4.9.1   # Use develop branch and v4.4.2-v4.9.1 image"
     echo "  $0 --commit abc1234 --version latest"
     echo "  $0 --skip-push                   # Build locally without pushing"
+    echo "  $0 --skip-push --local-arch      # Build locally for the host architecture only"
     echo "  $0 -t 19                         # Use consensus version 19"
     echo ""
     echo "Notes:"
@@ -66,6 +71,7 @@ GIT_REF="main"
 DEVNET_VERSION="v4.4.2-v4.9.1"
 CONSENSUS_VERSION=19
 SKIP_PUSH=false
+LOCAL_ARCH=false
 REQUIRED_PROGRAMS=""
 
 while [[ $# -gt 0 ]]; do
@@ -90,6 +96,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_PUSH=true
             shift
             ;;
+        --local-arch)
+            LOCAL_ARCH=true
+            shift
+            ;;
         -h|--help)
             usage
             ;;
@@ -99,6 +109,12 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Published snapshots must be multi-arch; single-arch builds are local-only
+if [[ "$LOCAL_ARCH" == "true" && "$SKIP_PUSH" == "false" ]]; then
+    print_error "--local-arch requires --skip-push (published snapshots must be multi-arch)."
+    exit 1
+fi
 
 # Returns 0 (true) if $1 >= $2, 1 (false) otherwise.
 # Both arguments must be in X.Y.Z format.
@@ -168,6 +184,7 @@ echo "  Aleo Devnet version: ${DEVNET_VERSION}"
 echo "  Consensus version: ${CONSENSUS_VERSION}"
 echo "  Clone method: SSH"
 echo "  Skip push: ${SKIP_PUSH}"
+echo "  Local arch only: ${LOCAL_ARCH}"
 echo "  Required programs: ${REQUIRED_PROGRAMS:-<none>}"
 echo "  Dockerfile: Will be generated dynamically"
 echo ""
@@ -303,33 +320,39 @@ cd "${CLONE_DIR}"
 
 cp ".env.example" ".env"
 
-# Check and use nvm if available and .nvmrc exists
-# Note: nvm is typically a shell function, not a command, so we check differently
+# Best effort: switch to the .nvmrc Node.js version via nvm when possible,
+# otherwise continue with the system Node.js (npm is re-checked below).
+# nvm.sh is not strict-mode safe (unset vars, non-zero returns, relies on the
+# default IFS), so relax -e/-u and restore IFS around it.
 if [ -f ".nvmrc" ]; then
-    print_step "Found .nvmrc file, checking for nvm..."
-    
-    # Try to load nvm from common locations
-    if [ -s "$HOME/.nvm/nvm.sh" ]; then
-        print_step "Loading nvm from ~/.nvm/nvm.sh..."
-        # shellcheck disable=SC1091
-        source "$HOME/.nvm/nvm.sh"
-    elif [ -s "/usr/local/opt/nvm/nvm.sh" ]; then
-        print_step "Loading nvm from /usr/local/opt/nvm/nvm.sh..."
-        # shellcheck disable=SC1091
-        source "/usr/local/opt/nvm/nvm.sh"
+    print_step "Found .nvmrc file, trying nvm (best effort)..."
+    NVM_SH=""
+    for candidate in "${NVM_DIR:-$HOME/.nvm}/nvm.sh" "/usr/local/opt/nvm/nvm.sh"; do
+        if [ -s "$candidate" ]; then
+            NVM_SH="$candidate"
+            break
+        fi
+    done
+
+    NVM_SWITCHED=false
+    if [ -n "$NVM_SH" ]; then
+        SAVED_IFS="$IFS"
+        IFS=$' \t\n'
+        set +eu
+        # shellcheck disable=SC1090
+        source "$NVM_SH" && type nvm &> /dev/null && nvm use && NVM_SWITCHED=true
+        set -eu
+        IFS="$SAVED_IFS"
     fi
-    
-    # Check if nvm is now available as a function
-    if type nvm &> /dev/null; then
-        print_step "Switching to Node.js version specified in .nvmrc..."
-        nvm use
+
+    if [[ "$NVM_SWITCHED" == "true" ]]; then
         print_success "Node.js version switched to: $(node --version)"
     else
-        print_warning ".nvmrc file found but nvm could not be loaded."
-        print_warning "Using system Node.js version: $(node --version)"
+        print_warning "Could not switch Node.js via nvm (nvm not found or .nvmrc version not installed)."
+        print_warning "Using system Node.js version: $(node --version 2>/dev/null || echo unknown)"
     fi
 else
-    print_step "No .nvmrc file found, using system Node.js version: $(node --version)"
+    print_step "No .nvmrc file found, using system Node.js version: $(node --version 2>/dev/null || echo unknown)"
 fi
 
 # Verify npm is still available after potential version switch
@@ -450,7 +473,9 @@ verify_snapshot_image() {
     local image="$1"
     local programs_csv="$2"
     local tool="$3"
-    local timeout=120
+    # Snapshot nodes synthesize circuits before serving REST (~6 min measured for
+    # v4.4.2-v4.9.1 on 4 arm64 cores); override with VERIFY_TIMEOUT if needed.
+    local timeout="${VERIFY_TIMEOUT:-900}"
     local port=13030
 
     local platform="${4:-}"
@@ -474,7 +499,7 @@ verify_snapshot_image() {
     print_step "Waiting up to ${timeout}s for REST API on port ${port}..."
     local elapsed=0
     while [[ $elapsed -lt $timeout ]]; do
-        if curl -s "http://localhost:${port}/testnet/latest/height" &>/dev/null; then
+        if curl -sf "http://localhost:${port}/testnet/block/height/latest" &>/dev/null; then
             print_success "REST API is ready (after ${elapsed}s)."
             break
         fi
@@ -595,7 +620,14 @@ fi
 print_step "Running deployment to devnet..."
 # TEST_MODE=devnet primes SDK consensus heights for the http devnet network;
 # DEVNET_EXTERNAL keeps LionDen from managing its own devnet container.
-if ! DEVNET_EXTERNAL=true TEST_MODE=devnet npx lionden recipe --file recipes/setup.ts --network devnet; then
+# LIONDEN_DEPLOY_BACKEND=leo builds deployments with the native Leo CLI: the default
+# SDK backend synthesizes keys for a program's whole import closure in WASM (~4 GiB
+# ceiling) and stalls on the larger policy programs. LionDen forces DEVNET=false for
+# http networks, so CONSENSUS_VERSION_HEIGHTS (read by Leo before DEVNET) supplies
+# the devnet's compressed consensus schedule.
+if ! DEVNET_EXTERNAL=true TEST_MODE=devnet \
+    LIONDEN_DEPLOY_BACKEND=leo CONSENSUS_VERSION_HEIGHTS="${CONSENSUS_HEIGHTS}" \
+    npx lionden recipe --file recipes/setup.ts --network devnet; then
     print_error "Deployment failed. Check the container logs for details."
     exit 1
 fi
@@ -750,7 +782,27 @@ echo ""
 build_multiplatform() {
     local tag=$1
     
-    if [[ "$CONTAINER_TOOL" == "podman" ]]; then
+    if [[ "$CONTAINER_TOOL" == "podman" && "$LOCAL_ARCH" == "true" ]]; then
+        # Podman local-arch: single native image under the plain tag (no manifest list)
+        local host_platform
+        case "$(uname -m)" in
+            x86_64) host_platform="linux/amd64" ;;
+            arm64|aarch64) host_platform="linux/arm64" ;;
+            *) print_error "Unsupported platform: $(uname -m)"; exit 1 ;;
+        esac
+
+        podman manifest rm "${IMAGE_NAME}:${tag}" 2>/dev/null || true
+        print_step "Building container image for ${host_platform} (--local-arch)..."
+        podman build \
+          --platform "${host_platform}" \
+          --build-arg GIT_COMMIT="${GIT_COMMIT}" \
+          --build-arg BUILD_DATE="${BUILD_DATE}" \
+          --build-arg REPO_URL="${REPO_URL_HTTPS}" \
+          --tag "${IMAGE_NAME}:${tag}" \
+          .
+        print_success "Image for ${tag} built locally (${host_platform})."
+
+    elif [[ "$CONTAINER_TOOL" == "podman" ]]; then
         # Podman approach: build separately and create manifest
         
         # Clean up any existing manifest lists that might conflict
@@ -886,7 +938,11 @@ if [[ -n "${REQUIRED_PROGRAMS}" ]]; then
 fi
 
 # Retag version-tag as latest (same digest, no rebuild)
-if [[ "$CONTAINER_TOOL" == "podman" ]]; then
+if [[ "$CONTAINER_TOOL" == "podman" && "$LOCAL_ARCH" == "true" ]]; then
+    podman manifest rm "${IMAGE_NAME}:${LATEST_TAG}" 2>/dev/null || true
+    podman tag "${IMAGE_NAME}:${VERSION_TAG}" "${IMAGE_NAME}:${LATEST_TAG}"
+    print_success "Latest tag created locally."
+elif [[ "$CONTAINER_TOOL" == "podman" ]]; then
     podman tag "${IMAGE_NAME}:${VERSION_TAG}-amd64" "${IMAGE_NAME}:${LATEST_TAG}-amd64"
     podman tag "${IMAGE_NAME}:${VERSION_TAG}-arm64" "${IMAGE_NAME}:${LATEST_TAG}-arm64"
     podman manifest rm "${IMAGE_NAME}:${LATEST_TAG}" 2>/dev/null || true
@@ -933,7 +989,10 @@ if [[ "$SKIP_PUSH" == "false" ]]; then
     echo "  📦 ${IMAGE_NAME}:${LATEST_TAG} (multi-arch)"
 else
     echo "Your custom container images were built locally:"
-    if [[ "$CONTAINER_TOOL" == "docker" ]]; then
+    if [[ "$LOCAL_ARCH" == "true" ]]; then
+        echo "  📦 ${IMAGE_NAME}:${VERSION_TAG} (current platform only)"
+        echo "  📦 ${IMAGE_NAME}:${LATEST_TAG} (current platform only)"
+    elif [[ "$CONTAINER_TOOL" == "docker" ]]; then
         echo "  📦 ${IMAGE_NAME}:${VERSION_TAG} (current platform only)"
         echo "  📦 ${IMAGE_NAME}:${LATEST_TAG} (current platform only)"
         echo ""
@@ -947,7 +1006,7 @@ else
     echo "Note: Images were NOT pushed to registry (--skip-push was used)"
 fi
 echo ""
-if [[ "$SKIP_PUSH" == "false" ]] || [[ "$CONTAINER_TOOL" == "podman" ]]; then
+if [[ "$SKIP_PUSH" == "false" ]] || [[ "$CONTAINER_TOOL" == "podman" && "$LOCAL_ARCH" == "false" ]]; then
     echo "Each multi-arch image includes:"
     echo "  🏗️  linux/amd64 (x86_64)"
     echo "  🏗️  linux/arm64 (Apple Silicon, ARM servers)"

@@ -331,11 +331,21 @@ jobs:
 
       - name: Deploy programs
         working-directory: compliant-transfer-aleo-build
+        env:
+          INPUT_CONSENSUS_VERSION: ${{ inputs.consensus-version }}
         run: |
           set -euo pipefail
+          CONSENSUS_HEIGHTS=$(seq 0 $((INPUT_CONSENSUS_VERSION - 1)) | tr '\n' ',' | sed 's/,$//')
           # TEST_MODE=devnet primes SDK consensus heights for the http devnet network;
           # DEVNET_EXTERNAL keeps LionDen from managing its own devnet container.
-          DEVNET_EXTERNAL=true TEST_MODE=devnet npx lionden recipe --file recipes/setup.ts --network devnet
+          # LIONDEN_DEPLOY_BACKEND=leo builds deployments with the native Leo CLI: the default
+          # SDK backend synthesizes keys for a program's whole import closure in WASM (~4 GiB
+          # ceiling) and stalls on the larger policy programs. LionDen forces DEVNET=false for
+          # http networks, so CONSENSUS_VERSION_HEIGHTS (read by Leo before DEVNET) supplies
+          # the devnet's compressed consensus schedule.
+          DEVNET_EXTERNAL=true TEST_MODE=devnet \
+            LIONDEN_DEPLOY_BACKEND=leo CONSENSUS_VERSION_HEIGHTS="${CONSENSUS_HEIGHTS}" \
+            npx lionden recipe --file recipes/setup.ts --network devnet
 
       - name: Verify deployed programs
         if: ${{ steps.programs.outputs.list != '' }}
@@ -567,11 +577,12 @@ jobs:
               "$IMAGE"
 
             # Wait for REST API readiness
-            TIMEOUT=360
+            # Snapshot nodes synthesize circuits before serving REST (~6 min measured locally)
+            TIMEOUT=900
             ELAPSED=0
             echo "[BUILD] Waiting up to ${TIMEOUT}s for REST API on port ${PORT}..."
             while [[ $ELAPSED -lt $TIMEOUT ]]; do
-              if curl -s "http://localhost:${PORT}/testnet/latest/height" &>/dev/null; then
+              if curl -sf "http://localhost:${PORT}/testnet/block/height/latest" &>/dev/null; then
                 echo "[SUCCESS] REST API is ready (after ${ELAPSED}s)."
                 break
               fi
