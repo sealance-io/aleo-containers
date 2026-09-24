@@ -46,6 +46,9 @@ usage() {
     echo "  --local-arch                     Build only for the host architecture (requires --skip-push)"
     echo "  -h, --help                       Show this help message"
     echo ""
+    echo "Environment:"
+    echo "  VERIFY_TIMEOUT                   Seconds to wait for the snapshot image's REST API during E2E verification (default: 900)"
+    echo ""
     echo "Examples:"
     echo "  $0                               # Use defaults (main branch, v4.4.2-v4.9.1)"
     echo "  $0 -c develop -v v4.4.2-v4.9.1   # Use develop branch and v4.4.2-v4.9.1 image"
@@ -470,7 +473,9 @@ verify_snapshot_image() {
     local image="$1"
     local programs_csv="$2"
     local tool="$3"
-    local timeout=120
+    # Snapshot nodes synthesize circuits before serving REST (~6 min measured for
+    # v4.4.2-v4.9.1 on 4 arm64 cores); override with VERIFY_TIMEOUT if needed.
+    local timeout="${VERIFY_TIMEOUT:-900}"
     local port=13030
 
     local platform="${4:-}"
@@ -494,7 +499,7 @@ verify_snapshot_image() {
     print_step "Waiting up to ${timeout}s for REST API on port ${port}..."
     local elapsed=0
     while [[ $elapsed -lt $timeout ]]; do
-        if curl -s "http://localhost:${port}/testnet/latest/height" &>/dev/null; then
+        if curl -sf "http://localhost:${port}/testnet/block/height/latest" &>/dev/null; then
             print_success "REST API is ready (after ${elapsed}s)."
             break
         fi
