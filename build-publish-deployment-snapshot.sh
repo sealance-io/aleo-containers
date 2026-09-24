@@ -609,7 +609,14 @@ fi
 print_step "Running deployment to devnet..."
 # TEST_MODE=devnet primes SDK consensus heights for the http devnet network;
 # DEVNET_EXTERNAL keeps LionDen from managing its own devnet container.
-if ! DEVNET_EXTERNAL=true TEST_MODE=devnet npx lionden recipe --file recipes/setup.ts --network devnet; then
+# LIONDEN_DEPLOY_BACKEND=leo builds deployments with the native Leo CLI: the default
+# SDK backend synthesizes keys for a program's whole import closure in WASM (~4 GiB
+# ceiling) and stalls on the larger policy programs. LionDen forces DEVNET=false for
+# http networks, so CONSENSUS_VERSION_HEIGHTS (read by Leo before DEVNET) supplies
+# the devnet's compressed consensus schedule.
+if ! DEVNET_EXTERNAL=true TEST_MODE=devnet \
+    LIONDEN_DEPLOY_BACKEND=leo CONSENSUS_VERSION_HEIGHTS="${CONSENSUS_HEIGHTS}" \
+    npx lionden recipe --file recipes/setup.ts --network devnet; then
     print_error "Deployment failed. Check the container logs for details."
     exit 1
 fi
